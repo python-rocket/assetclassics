@@ -270,10 +270,14 @@ def main():
             data_combined = {**data_car_summary, **data_car_details, **additional_data}
             articles_parsed.append(data_combined)
 
+            """
             if test_mode and i >= 2:
                 break
+            """
+        """
         if test_mode:
             break
+        """
 
 
     articles_parsed_converted = []
@@ -298,10 +302,17 @@ def main():
 
 # Main script
 if __name__ == "__main__":
-    test_mode = False
+
+    test_mode = True
+    if test_mode:
+        bigquery_project = "python-rocket-1"
+        bigquery_table = "assetclassics.autoscout_scrapper_sample_v1"
+
+    else:
+        bigquery_project = "ac-vehicle-data"
+        bigquery_table = "autoscout24.autoscout_scrapper_sample_v1"
+
     base_url = "https://www.autoscout24.com"
-    bigquery_project = "ac-vehicle-data"
-    bigquery_table = "autoscout24.autoscout_scrapper_sample_v1"
     main()
 
 
