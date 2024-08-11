@@ -2,3 +2,4 @@ venv
 src/.DS_Store
 src/websites/.DS_Store
 src/websites/results
+.idea/
