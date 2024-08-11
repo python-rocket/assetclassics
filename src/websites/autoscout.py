@@ -79,8 +79,6 @@ def get_section_data(soup):
     return section_data_combined
 
 
-
-
 def get_car_details(subpage_link):
     soup = get_soup_from_page(subpage_link)
 
@@ -88,7 +86,7 @@ def get_car_details(subpage_link):
     section_data_combined = get_section_data(soup)
 
     # Get Additional Json data
-    additional_json_data = get_additional_json_data(soup)
+    additional_json_data = get_additional_json_data(soup, subpage_link)
 
     # Combine data
     combined_data = section_data_combined
@@ -113,7 +111,6 @@ def convert_to_result_schema(available_data):
     return result_schema
 
 
-
 def write_data_to_csv(data, file_path):
     print(f"Writing data to file {file_path}")
     df = pd.DataFrame(data)
@@ -133,7 +130,8 @@ def write_data_to_json(data, base_path):
         with open(file_path, 'w') as file:
             json.dump(element, file, indent=4)
 
-def get_additional_json_data(soup):
+
+def get_additional_json_data(soup, link):
     # Check for the presence of dynamic content scripts
     script_tags = soup.find_all('script', type='application/json')
 
@@ -155,13 +153,14 @@ def get_additional_json_data(soup):
     # Extract the car listing details
     listing_details = data.get('props', {}).get('pageProps', {}).get('listingDetails', {})
     vehicle_details = listing_details.get('vehicle', {})
-    vehicle_details.pop("rawData")
+    vd_error = vehicle_details.pop("rawData", None)
+    if not vd_error:
+        print(f"No raw data error: {link}")
     tracking_params = listing_details.get('trackingParams', {})
     location_details = listing_details.get('location', {})
     seller_details = listing_details.get('seller', {})
     filtered_seller_details = {key: seller_details[key] for key in ["id", "type", "companyName"] if key in seller_details}
     model_orig_details = {key: vehicle_details[key] for key in ["make", "makeId", "model", "modelOrModelLineId"] if key in vehicle_details}
-
 
     # Extract the relevant keys
     car_info = {
@@ -220,7 +219,6 @@ def clean_and_prepare_data(data):
     return df.where(pd.notnull(df), None)
 
 
-
 def upload_to_bigquery(df, project, table_id):
     """Upload a pandas DataFrame to a Google BigQuery table and return the job response."""
     client = bigquery.Client(project=project)
@@ -237,8 +235,7 @@ def upload_to_bigquery(df, project, table_id):
     print(response)
 
 
-
-def main():
+def scrape_and_save_all_pages(url_filter):
     # Replace this with the actual URL
 
     # url = "https://www.autoscout24.com/lst?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&fregto=2005&powertype=kw&pricefrom=20000&search_id=gd6zvktyks&sort=age&source=detailsearch&ustate=N%2CU"
@@ -250,16 +247,17 @@ def main():
         print("")
         print(f"*** Processing page: {page}/{page_max}")
 
-        url_filter = "https://www.autoscout24.com/lst?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&fregto=2005&powertype=kw&pricefrom=20000&search_id=gd6zvktyks&sort=age&source=listpage_pagination&ustate=N%2CU"
+        #url_filter = "https://www.autoscout24.com/lst?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&fregto=2005&powertype=kw&pricefrom=20000&search_id=gd6zvktyks&sort=age&source=listpage_pagination&ustate=N%2CU"
         url = url_filter + f"&page={page}"
         soup = get_soup_from_page(url)
         articles = get_car_articles(soup)
         len_articles = len(articles)
         print(f"Processing this number of articles: {len_articles}")
-
+        if len_articles < 1:
+            break
         for i, article in enumerate(articles):
-            print("")
-            print(f"*** Processing article: {i + 1}/{len_articles}")
+            # print("")
+            # print(f"*** Processing article: {i + 1}/{len_articles}")
             data_car_summary = get_car_summary(article)
             data_car_details = get_car_details(data_car_summary["subpage_link"])
             additional_data = add_additional_data(data_car_details)
@@ -294,10 +292,44 @@ def main():
     write_data_to_csv(articles_parsed_converted, "result/autoscout_data_2.csv")
     #write_data_to_json(articles_parsed_converted, "result/autoscout_data")
 
-    df = clean_and_prepare_data(articles_parsed_converted)
+    # df = clean_and_prepare_data(articles_parsed_converted)
+    # upload_to_bigquery(df, bigquery_project, bigquery_table)
+
+
+def clean_and_prepare_df(df):
+    """Perform cleaning and preparation of the DataFrame."""
+    # Example: Replace NaN with None (suitable for BigQuery)
+
+    # Iterate through the list and convert necessary fields
+
+    df = df.astype(str)
+    df = df.replace(np.nan, None)
+    df = df.replace("None", None)
+    df = df.replace("nan", None)
+    return df.where(pd.notnull(df), None)
+
+
+def main():
+
+    body_types = [1, 2, 3, 4, 5, 6, 7]
+    for body_type in body_types:
+        print("body_type: ", body_type)
+        from_price = 20000
+        to_price = 400000
+        step = 1000
+        for price in range(from_price, to_price, step):
+            print("price range: ", price, price+step-1)
+            url = f"https://www.autoscout24.com/lst?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&fregto=2005&powertype=kw&search_id=gd6zvktyks&sort=age&source=listpage_pagination&ustate=N%2CU&pricefrom={price}&priceto={price+step-1}&body={body_type}"
+            scrape_and_save_all_pages(url)
+
+    final_from_price = 400000
+    url = f"https://www.autoscout24.com/lst?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&fregto=2005&powertype=kw&search_id=gd6zvktyks&sort=age&source=listpage_pagination&ustate=N%2CU&pricefrom={final_from_price}"
+    scrape_and_save_all_pages(url)
+
+    df = pd.read_csv("result/autoscout_data_2.csv")
+    # Print the full DataFrame
+    df = clean_and_prepare_df(df)
     upload_to_bigquery(df, bigquery_project, bigquery_table)
-
-
 
 
 # Main script
