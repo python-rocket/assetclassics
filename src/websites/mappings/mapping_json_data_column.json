@@ -1,0 +1,82 @@
+{
+  "date_scraped": null,
+  "source": null,
+  "source_id": null,
+  "ad_url": null,
+  "ad_title": null,
+
+  ## new,
+  "ad_img": null (first image link from json)
+
+  "record_id": null,
+  "model_orig_variant": null,
+  "make_orig": null, #(usw json_vehicle.make -> if empty use from htmo)
+  "model_orig": null, #, (use json_vehicle.model -> if empty use json_vehicle.modelVersionInput --> if empty use html)
+  "model_orig_details": null, #,(use json_vehicle.modelVersionInput)
+  "price": null,
+  "currency": null,
+  "mileage": null,
+  "mileage_unit": null,
+  "production_year": null,
+  "chassis_no": null,
+  "engine_no": null,
+  "body_no": null,
+  "condition": null,
+  "color_exterior": null,
+  "color_interior": null,
+  "country": null,
+  "region": null,
+
+  ##new,
+  "location_country_code": null,
+  "location_zip": null,
+  "location_city": null,
+
+  "bodystyle": null,
+  "engine": null,
+  "transmission": null,
+  "drive_type": null,
+  "gears": null,
+  "driver_side": null,
+  "auction_house": null,
+  "auction_event": null,
+  "fuel": null,
+  "kw": null,
+  "hp": null,
+  "cylinders_volume": null,
+  "cylinders_number": null,
+  "seats": null,
+  "doors": null,
+
+  ## new,
+  "bodyColorOriginal": null,
+  "upholstery": null,
+
+  "weight": null,
+  "options": null,
+  "description": null,
+
+  ##new,
+  "seller_id": null,
+  "seller_isDealer": null,
+  "seller_link": null,
+  "seller_phone": null,
+  "source_makeID": null,
+  "source_modelID": null,
+  "vehicle_type": null,
+  "vehicle_hsnTsn": null,
+  "vehicle_originalMarket": null,
+  "vehicle_hadAccident": null,
+  "vehicle_hasFullServiceHistory": null,
+  "vehicle_noOfPreviousOwners": null,
+
+
+
+
+
+  "price_public": null,
+  "price_dealer": null,
+  "location": null,
+  "seller": null,
+  "vehicle": null
+}

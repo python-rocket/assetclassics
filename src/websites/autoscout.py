@@ -20,7 +20,7 @@ def get_soup_from_page(url):
         return soup
 
     else:
-        raise Exception(f"Failed to load page {url}")
+        print(f"Failed to load page {url}")
 
 
 
@@ -176,6 +176,11 @@ def get_additional_json_data(soup, link):
 
     return car_info
 
+
+def replace_html_with_json_if_available():
+    pass
+
+
 def add_additional_data(data_car_details):
     additional_data = {}
     additional_data["date_scraped"] = datetime.datetime.now().date().strftime('%Y-%m-%d')
@@ -247,26 +252,41 @@ def scrape_and_save_all_pages(url_filter):
         print("")
         print(f"*** Processing page: {page}/{page_max}")
 
-        #url_filter = "https://www.autoscout24.com/lst?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&fregto=2005&powertype=kw&pricefrom=20000&search_id=gd6zvktyks&sort=age&source=listpage_pagination&ustate=N%2CU"
-        url = url_filter + f"&page={page}"
-        soup = get_soup_from_page(url)
-        articles = get_car_articles(soup)
-        len_articles = len(articles)
-        print(f"Processing this number of articles: {len_articles}")
-        if len_articles < 1:
-            break
+        try:
+
+            #url_filter = "https://www.autoscout24.com/lst?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&fregto=2005&powertype=kw&pricefrom=20000&search_id=gd6zvktyks&sort=age&source=listpage_pagination&ustate=N%2CU"
+            url = url_filter + f"&page={page}"
+            soup = get_soup_from_page(url)
+            articles = get_car_articles(soup)
+            len_articles = len(articles)
+            print(f"Processing this number of articles: {len_articles}")
+            if len_articles < 1:
+                break
+
+        except Exception as e:
+            print("skipping this page. Maybe no soup or other error. Going to next page.")
+            print(e)
+            continue
+
+
         for i, article in enumerate(articles):
             # print("")
             # print(f"*** Processing article: {i + 1}/{len_articles}")
-            data_car_summary = get_car_summary(article)
-            data_car_details = get_car_details(data_car_summary["subpage_link"])
-            additional_data = add_additional_data(data_car_details)
+            try:
+                data_car_summary = get_car_summary(article)
+                data_car_details = get_car_details(data_car_summary["subpage_link"])
+                additional_data = add_additional_data(data_car_details)
 
-            #data_car_options = add_options(data_car_details)
+                #data_car_options = add_options(data_car_details)
 
 
-            data_combined = {**data_car_summary, **data_car_details, **additional_data}
-            articles_parsed.append(data_combined)
+                data_combined = {**data_car_summary, **data_car_details, **additional_data}
+                articles_parsed.append(data_combined)
+            except Exception as e:
+                print("failed processing this article: Going to next article")
+                print(e)
+                continue
+
 
             """
             if test_mode and i >= 2:
@@ -289,7 +309,7 @@ def scrape_and_save_all_pages(url_filter):
     #print(articles_parsed_converted[0])
     #print(articles_parsed_converted[0].keys())
 
-    write_data_to_csv(articles_parsed_converted, "result/autoscout_data_2.csv")
+    return articles_parsed_converted
     #write_data_to_json(articles_parsed_converted, "result/autoscout_data")
 
     # df = clean_and_prepare_data(articles_parsed_converted)
@@ -316,11 +336,16 @@ def main():
         print("body_type: ", body_type)
         from_price = 20000
         to_price = 400000
-        step = 1000
+        step = 5000
+
+        data = []
         for price in range(from_price, to_price, step):
             print("price range: ", price, price+step-1)
             url = f"https://www.autoscout24.com/lst?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&fregto=2005&powertype=kw&search_id=gd6zvktyks&sort=age&source=listpage_pagination&ustate=N%2CU&pricefrom={price}&priceto={price+step-1}&body={body_type}"
-            scrape_and_save_all_pages(url)
+            data = data + scrape_and_save_all_pages(url)
+
+        write_data_to_csv(data, "result/autoscout_data_2.csv")
+
 
     final_from_price = 400000
     url = f"https://www.autoscout24.com/lst?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&fregto=2005&powertype=kw&search_id=gd6zvktyks&sort=age&source=listpage_pagination&ustate=N%2CU&pricefrom={final_from_price}"
@@ -338,7 +363,7 @@ if __name__ == "__main__":
     test_mode = True
     if test_mode:
         bigquery_project = "python-rocket-1"
-        bigquery_table = "assetclassics.autoscout_scrapper_sample_v1"
+        bigquery_table = "assetclassics.autoscout_scrapper_sample_v2"
 
     else:
         bigquery_project = "ac-vehicle-data"
