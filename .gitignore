@@ -5,3 +5,4 @@ src/websites/results
 .idea/
 *.log
 .DS_Store
+*.csv
