@@ -3,3 +3,5 @@ src/.DS_Store
 src/websites/.DS_Store
 src/websites/results
 .idea/
+*.log
+.DS_Store
