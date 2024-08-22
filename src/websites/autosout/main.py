@@ -185,6 +185,30 @@ class AutoScout():
         return articles_parsed
 
 
+    async def dynamic_steps_logic(self):
+
+
+        # After price limit last: Get all remaining data
+        if self.from_price >= self.price_limit_last:
+            self.step = 100000000
+            next_is_last_round = True
+            self.from_price = self.to_price + 1
+
+        #  After price limit 1: Change Step size
+        elif self.to_price == self.price_limit_1 - 1:
+            self.step = 1000
+            #print(f"Increasing Steps to: {step}")
+            self.from_price = self.price_limit_1
+
+        else:
+            self.rom_price = self.from_price + self.step
+
+        # Get all which have higher price
+
+
+        self.to_price = self.from_price + self.step - 1
+
+
 
     async def reaggregate_all_data(self):
         logger.info("Start: Reaggregating all datae")
@@ -198,27 +222,19 @@ class AutoScout():
                 logger.info("********** Loop for body_type: {}".format(body_type))
 
 
-                from_price = 20000
-                to_price = 20049
-                step = 50
-                data = []
-                price_limit_1 = 100000
-                price_limit_last = 400000
-                next_is_last_round = False
+                self.from_price = 20000
+                self.to_price = 20049
+                self.step = 50
+                self.data = []
+                self.price_limit_1 = 100000
+                self.price_limit_last = 400000
+                self.next_is_last_round = False
                 ## Loop through all price ranges
                 #for price in range(from_price, to_price, step):
                 while True:
 
-                    if next_is_last_round:
-                        pass
-                        #print("Using last call now")
-
-
-
-
-
                     #print("")
-                    if from_price % 10000 == 0: # or round_down_to_nearest_hundred_thousand(from_price) % 100000 == 0
+                    if self.from_price % 10000 == 0: # or round_down_to_nearest_hundred_thousand(from_price) % 100000 == 0
                         logger.info("-------------------------")
                         logger.info("Status update")
                         helpers_functions.get_execution_time(start_time)
@@ -226,47 +242,22 @@ class AutoScout():
                         logger.info("Number of failed articles {}".format(self.failed_article_counter))
                         logger.info("-------------------------")
                         logger.info("")
-                        logger.info("****** price range: {} - {}".format(from_price,to_price ))
+                        logger.info("****** price range: {} - {}".format(self.from_price,self.to_price ))
 
 
-                    url = f"https://www.autoscout24.com/lst?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&fregto=2005&powertype=kw&search_id=gd6zvktyks&sort=age&source=listpage_pagination&ustate=N%2CU&pricefrom={from_price}&priceto={to_price}&body={body_type}"
+                    url = f"https://www.autoscout24.com/lst?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&fregto=2005&powertype=kw&search_id=gd6zvktyks&sort=age&source=listpage_pagination&ustate=N%2CU&pricefrom={self.from_price}&priceto={self.to_price}&body={body_type}"
 
                     # Get all cars ant their data
-                    data += await self.loop_through_all_pages(url, session, base_url)
+                    self.data += await self.loop_through_all_pages(url, session, base_url)
 
-
-                    # Increasing price steps
-
-                    if next_is_last_round:
+                    # Dynamic Steps
+                    await self.dynamic_steps_logic()
+                    if self.next_is_last_round:
                         break
 
 
-                    if from_price >= price_limit_last:
-                        step = 100000000
-                        next_is_last_round = True
-                        from_price = to_price + 1
-
-                    elif to_price == price_limit_1 - 1:
-                        step = 1000
-                        #print(f"Increasing Steps to: {step}")
-                        from_price = price_limit_1
-
-                    else:
-                        from_price = from_price + step
-
-                    # Get all which have higher price
-
-
-                    to_price = from_price + step - 1
-
-
-
-
-
-
-
                 # Write data to csv
-                helpers_functions.write_data_to_csv(data, csv_path)
+                helpers_functions.write_data_to_csv(self.data, csv_path)
                 if test_mode:
                     logger.info("test mode: stopping after one body type")
                     break
