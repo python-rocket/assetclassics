@@ -6,3 +6,4 @@ src/websites/results
 *.log
 .DS_Store
 *.csv
+src/websites/autosout/result/*.csv
