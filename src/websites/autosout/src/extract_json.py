@@ -61,7 +61,7 @@ def get_additional_json_data(soup, link, logger):
         "production_year": vehicle_details.get('firstRegistrationDateRaw', None),
         "color_exterior": vehicle_details.get('bodyColor', None),
         "color_interior": vehicle_details.get('upholsteryColor', None),
-        "country": location_details.get('countryCode', None),
+        "country": None, #"country": location_details.get('countryCode', None),
         "region": "",  # Will be defined later based on country/country code
         "location_country_code": location_details.get('countryCode', None),
         "location_zip": location_details.get('zip', None),
@@ -92,7 +92,9 @@ def get_additional_json_data(soup, link, logger):
         "vehicle_originalMarket":  vehicle_details.get('originalMarket', None),
         "vehicle_hadAccident":  str(vehicle_details.get('hadAccident', None)),
         "vehicle_hasFullServiceHistory":  str(vehicle_details.get('hasFullServiceHistory', None)),
-        "vehicle_noOfPreviousOwners":  vehicle_details.get('noOfPreviousOwners', None)
+        "vehicle_noOfPreviousOwners":  vehicle_details.get('noOfPreviousOwners', None),
+        "seller_type": seller_details.get('type', None),
+        "seller_companyName": seller_details.get('companyName', None)
 
     }
 

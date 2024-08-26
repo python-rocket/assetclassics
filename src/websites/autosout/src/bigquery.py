@@ -34,6 +34,8 @@ def clean_and_prepare_df(df):
 
 
 def upload_to_bigquery(df, project, table_id):
+    # Convert all columns in the DataFrame to strings
+    df = df.astype(str)
     logger.info("RESULT DF")
     logger.info(df)
     client = bigquery.Client(project=project)
@@ -47,6 +49,7 @@ def upload_to_bigquery(df, project, table_id):
         "output_rows": job.output_rows
     }
     logger.info(response)
+
 
 def get_existing_record_ids(project, dataset_id, table_id):
     column = "record_id"
@@ -124,3 +127,14 @@ def get_empty_columns_from_bigquery(project_id, dataset_id, table_id):
             print(col)
     else:
         print("No columns with all empty values were found.")
+
+
+def read_from_bigquery(project_id, dataset_id, table_id, columns=['*'], where_condition=''):
+    client = bigquery.Client(project=project_id)
+    full_table_id = f"{project_id}.{dataset_id}.{table_id}"
+
+    # Read the table into a DataFrame
+    columns_str = ",".join(columns)
+    query = f"SELECT {columns_str} FROM `{full_table_id}`{where_condition}"
+    df = client.query(query).to_dataframe()
+    return df
