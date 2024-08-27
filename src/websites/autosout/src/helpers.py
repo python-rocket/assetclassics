@@ -39,8 +39,15 @@ class HelperFunctions:
         articles = soup.find_all('article')
         return articles
     
-    
-    
+    async def articles_num(self, url, session):
+        try:
+            soup, _ = await self.get_soup_from_page(url, session)
+            articles_num = int(
+                soup.find('h1', {'data-testid': 'list-header-title'}).get_text().split(' ')[0].replace(',', ''))
+            return articles_num
+        except Exception as e:
+            return -1
+
     async def get_soup_from_page(self, url, session, retries=3, timeout=10):
         failed_articles = []
         headers = {

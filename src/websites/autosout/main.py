@@ -48,8 +48,7 @@ class AutoScout():
         until_year_cars = df[(df['scrape_setting'] != 'All') & (df['scrape_setting'] != 'No')]
         until_year_cars['scrape_setting'] = until_year_cars['scrape_setting'].astype(int)
 
-        cars_after_2005 = pd.concat([all_years_cars, until_year_cars])
-        cars_after_2005 = cars_after_2005[(cars_after_2005['scrape_setting'] > 2005)]
+        all_cars = pd.concat([all_years_cars, until_year_cars])
 
         self.no_need_cars = no_need_cars.groupby(no_need_cars['autoscout_24_make_name'].str.lower())['autoscout_24_model_name'].apply(lambda x: set(x.str.lower())).to_dict()
 
@@ -58,8 +57,9 @@ class AutoScout():
         self.until_year_cars = until_year_cars.groupby(until_year_cars['autoscout_24_make_name'].str.lower()).apply(
                                 lambda x: {model.lower(): setting for model, setting in zip(x['autoscout_24_model_name'], x['scrape_setting'])}).to_dict()
 
-        self.cars_after_2005 = cars_after_2005.groupby(cars_after_2005['autoscout_24_make_name'].str.lower()).apply(
+        self.all_cars = all_cars.groupby(all_cars['autoscout_24_make_name'].str.lower()).apply(
                                 lambda x: {model.lower(): setting for model, setting in zip(x['autoscout_24_model_name'], x['scrape_setting'])}).to_dict()
+
 
     async def get_car_details(self, subpage_link, session, article):
         soup, num_failed_articles = await helpers_functions.get_soup_from_page(subpage_link, session)
@@ -175,9 +175,9 @@ class AutoScout():
                 logger.error("NO ARTICLES FOUND")
 
 
-            if test_mode:
-                #print("Test mode. only using first page")
-                break
+            # if test_mode:
+            #     #print("Test mode. only using first page")
+            #     break
 
         # Executing asnyc task to get all car details
         #logger.info(f"Total running tasks BEFORE: {len(asyncio.all_tasks())}")
@@ -190,14 +190,16 @@ class AutoScout():
                 make = car.get('car_summary').get('make_orig').lower()
                 model = car.get('car_summary').get('model_orig').lower()
                 year = car.get('additional_json_data').get('production_year')
-                if make in self.no_need_cars and model in self.no_need_cars[make]:
-                    continue
-                if make in self.until_year_cars and model in self.until_year_cars[make] and year:
-                    if int(year[:4]) > int(self.until_year_cars[make][model]):
-                        continue
 
-                data_combined = await self.combine_data(car["additional_json_data"], car["section_data_combined"], car["car_summary"], car["additional_data"])
-                articles_parsed.append(data_combined)
+                if make in self.all_cars and model in self.all_cars[make] and year:
+                    if int(year[:4]) <= int(self.all_cars[make][model]):
+                        data_combined = await self.combine_data(car["additional_json_data"],
+                                                                car["section_data_combined"], car["car_summary"],
+                                                                car["additional_data"])
+                        articles_parsed.append(data_combined)
+
+                else:
+                    continue
 
             except Exception as e:
                 logger.error("failed processing this article: Going to next article")
@@ -223,68 +225,9 @@ class AutoScout():
         # Get all which have higher price
         self.to_price = self.from_price + self.step - 1
 
-    async def reaggregate_all_data(self):
-        logger.info("Start: Reaggregating all data")
-
-        ## Loop through all body types
-        body_types = [1, 2, 3, 4, 5, 6, 7]
-        async with aiohttp.ClientSession() as session:
-            for body_type in body_types:
-                logger.info("")
-                logger.info("********** Loop for body_type: {}".format(body_type))
-
-                self.from_price = 20000
-                self.to_price = 20049
-                self.step = 50
-                self.data = []
-                self.price_limit_1 = 100000
-                self.price_limit_last = 400000
-                self.next_is_last_round = False
-                ## Loop through all price ranges (price + step in dynamic_steps_logic())
-                #for price in range(from_price, to_price, step):
-                while True:
-                    #print("")
-                    if self.from_price % 10000 == 0: # or round_down_to_nearest_hundred_thousand(from_price) % 100000 == 0
-                        logger.info("-------------------------")
-                        logger.info("Status update")
-                        helpers_functions.get_execution_time(start_time)
-                        logger.info("Number of processed articles {}".format(self.article_counter))
-                        logger.info("Number of failed articles {}".format(self.failed_article_counter))
-                        logger.info("-------------------------")
-                        logger.info("")
-                        logger.info("****** price range: {} - {}".format(self.from_price,self.to_price ))
-
-                    url = f"https://www.autoscout24.com/lst?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&fregto=2005&powertype=kw&search_id=gd6zvktyks&sort=age&source=listpage_pagination&ustate=N%2CU&pricefrom={self.from_price}&priceto={self.to_price}&body={body_type}"
-                    # Get all cars ant their data
-                    self.data += await self.loop_through_all_pages(url, session, base_url)
-
-                    # Dynamic Steps
-                    await self.dynamic_steps_logic()
-                    if self.next_is_last_round:
-                        break
-
-                # Write data to csv (after each body type)
-                helpers_functions.write_data_to_csv(self.data, csv_path)
-                if test_mode:
-                    logger.info("test mode: stopping after one body type")
-                    break
-
-            # Final run after loop ended
-            """
-            final_from_price = 400000
-            url = f"https://www.autoscout24.com/lst?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&fregto=2005&powertype=kw&search_id=gd6zvktyks&sort=age&source=listpage_pagination&ustate=N%2CU&pricefrom={final_from_price}"
-            await self.loop_through_all_pages(url, session, base_url)
-            """
-
-            # Read CSV and save result in Big Query
-            df = pd.read_csv(csv_path)
-            df = clean_and_prepare_df(df)
-            upload_to_bigquery(df, bigquery_project, bigquery_table)
-
     async def get_newest_data(self):
         logger.info("Start: Getting newest data")
-        from_price = 20000
-        url = f"https://www.autoscout24.com/lst?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&fregto=2005&powertype=kw&pricefrom={from_price}&search_id=gd6zvktyks&sort=age&source=listpage_pagination&ustate=N%2CU"
+        url = f"https://www.autoscout24.com/lst?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&powertype=kw&search_id=gd6zvktyks&sort=age&source=listpage_pagination&ustate=N%2CU"
 
         # Get all cars ant their data
         async with aiohttp.ClientSession() as session:
@@ -303,33 +246,42 @@ class AutoScout():
 
     async def scrap_special_cars(self):
 
-        first_reg_from = 2006
+        first_reg_from = 1900
         async with aiohttp.ClientSession() as session:
-            for make, models in self.cars_after_2005.items():
+            for make, models in self.all_cars.items():
 
                 self.data = []
 
-                for model in models:
-                    year_to = self.cars_after_2005[make][model]
+                for model, year_to in models.items():
+
                     model = model.replace(' ', '-')
-                    url = f"https://www.autoscout24.com/lst/{make}/{model}?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&fregfrom={first_reg_from}&fregto={year_to}&powertype=kw&search_id=18bko0pje7h&sort=age&source=listpage_pagination&ustate=N%2CU"
-                    soup, _ = await helpers_functions.get_soup_from_page(url, session)
-                    articles_num = int(soup.find('h1', {'data-testid': 'list-header-title'}).get_text().split(' ')[0].replace(',', ''))
+
+                    url = f"https://www.autoscout24.com/lst/{make}/{model}?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&fregto={year_to}&powertype=kw&search_id=18bko0pje7h&sort=age&source=listpage_pagination&ustate=N%2CU"
+                    articles_num = await helpers_functions.articles_num(url, session)
                     if articles_num <= 400:
                         # Get all cars and their data
-                        print(f"Scrapping cars: {make, model}\n")
+                        logger.info(f"Scrapping cars: {make, model}\n")
                         self.data += await self.loop_through_all_pages(url, session, base_url)
                     else:
                         for year in range(first_reg_from, year_to+1):
                             url = f"https://www.autoscout24.com/lst/{make}/{model}?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&fregfrom={year}&fregto={year}&powertype=kw&search_id=18bko0pje7h&sort=age&source=listpage_pagination&ustate=N%2CU"
-                            print(f"Scrapping cars: {make, model} in years range {year} - {year}\n")
-                            # Get all cars and their data
-                            self.data += await self.loop_through_all_pages(url, session, base_url)
-
-                    #break # for test
+                            articles_num = await helpers_functions.articles_num(url, session)
+                            if articles_num <= 400:
+                                logger.info(f"Scrapping cars: {make, model} in years range {year} - {year}\n")
+                                # Get all cars and their data
+                                self.data += await self.loop_through_all_pages(url, session, base_url)
+                            else:
+                                body_types = [1, 2, 3, 4, 5, 6, 7]
+                                for body_type in body_types:
+                                    url = f"{url}&body={body_type}"
+                                    logger.info(f"Scrapping cars: {make, model} in years range {year} - {year} body type: {body_type}\n")
+                                    # Get all cars and their data
+                                    self.data += await self.loop_through_all_pages(url, session, base_url)
+                    if test_mode:
+                        break
 
                 helpers_functions.write_data_to_csv(self.data, csv_path)
-                bq_table_all_years = 'assetclassics.all_years_cars'
+                bq_table_all_years = 'assetclassics.all_cars_data'
                 existing_record_ids = get_existing_record_ids(bigquery_project, bq_table_all_years.split('.')[0], bq_table_all_years.split('.')[1])
                 df = pd.read_csv(csv_path)
                 num_rows_before = df.shape[0]
@@ -338,18 +290,19 @@ class AutoScout():
                 logger.info(f"Removed this number of duplicate record ids: {num_rows_after - num_rows_before}")
                 df = clean_and_prepare_df(df)
                 upload_to_bigquery(df, bigquery_project, bq_table_all_years)
-                #break # for test
+                if test_mode:
+                    break
 
     async def run(self):
         helpers_functions.delete_csv_if_exists(csv_path)
         # Read special cars parameters from bq
         self.get_special_cars()
-        # if is_aggregation:
-        #     await self.reaggregate_all_data()
-        #     logger.info("FINAL: Number of processed articles {}".format(self.article_counter))
-        # else:
-        #     await self.get_newest_data()
-        await self.scrap_special_cars()
+        if is_aggregation:
+            await self.scrap_special_cars()
+            logger.info("FINAL: Number of processed articles {}".format(self.article_counter))
+        else:
+            await self.get_newest_data()
+
 
 
 # Main script
