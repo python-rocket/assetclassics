@@ -307,7 +307,7 @@ class AutoScout():
                     if test_mode:
                         break
                 helpers_functions.write_data_to_csv(self.data, csv_path)
-                bq_table_all_years = 'all_cars_data_test'
+                bq_table_all_years = 'all_cars_data_2'
                 upload_unique_to_bigquery(csv_path, bigquery_project, bigquery_dataset_id, bq_table_all_years)
                 if test_mode:
                     break
