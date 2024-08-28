@@ -302,7 +302,7 @@ class AutoScout():
                                             if articles_num == 0:
                                                 continue
                                             self.data += await self.loop_through_all_pages(url, session, base_url)
-
+                    models_processed += 1
                     if test_mode:
                         break
                 helpers_functions.write_data_to_csv(self.data, csv_path)
@@ -310,7 +310,7 @@ class AutoScout():
                 upload_unique_to_bigquery(csv_path, bigquery_project, bigquery_dataset_id, bq_table_all_years)
                 if test_mode:
                     break
-                models_processed += len(models)
+
 
     async def run(self):
         helpers_functions.delete_csv_if_exists(csv_path)
