@@ -138,3 +138,15 @@ def read_from_bigquery(project_id, dataset_id, table_id, columns=['*'], where_co
     query = f"SELECT {columns_str} FROM `{full_table_id}`{where_condition}"
     df = client.query(query).to_dataframe()
     return df
+
+
+def upload_unique_to_bigquery(csv_path, bigquery_project, bigquery_dataset_id, bigquery_table_id):
+    existing_record_ids = get_existing_record_ids(bigquery_project, bigquery_dataset_id, bigquery_table_id)
+    df = pd.read_csv(csv_path)
+    num_rows_before = df.shape[0]
+    df = df[~df['record_id'].isin(existing_record_ids)]
+    num_rows_after = df.shape[0]
+    logger.info(f"Removed this number of duplicate record ids: {num_rows_after - num_rows_before}")
+    df = clean_and_prepare_df(df)
+    bigquery_table = f"{bigquery_dataset_id}.{bigquery_table_id}"
+    upload_to_bigquery(df, bigquery_project, bigquery_table)

@@ -10,7 +10,7 @@ from datetime import datetime
 from src.helpers import HelperFunctions
 from src.extract_html import get_car_summary, get_section_data
 from src.extract_json import get_additional_json_data
-from src.bigquery import clean_and_prepare_df, upload_to_bigquery, get_existing_record_ids, read_from_bigquery
+from src.bigquery import clean_and_prepare_df, upload_to_bigquery, get_existing_record_ids, read_from_bigquery, upload_unique_to_bigquery
 
 import traceback
 
@@ -59,8 +59,6 @@ class AutoScout():
 
         self.all_cars = all_cars.groupby(all_cars['autoscout_24_make_name'].str.lower()).apply(
                                 lambda x: {model.lower(): setting for model, setting in zip(x['autoscout_24_model_name'], x['scrape_setting'])}).to_dict()
-
-
 
     async def get_car_details(self, subpage_link, session, article):
         soup, num_failed_articles = await helpers_functions.get_soup_from_page(subpage_link, session)
@@ -235,20 +233,13 @@ class AutoScout():
             data = await self.loop_through_all_pages(url, session, base_url)
 
         helpers_functions.write_data_to_csv(data, csv_path)
-
-        existing_record_ids = get_existing_record_ids(bigquery_project, bigquery_dataset_id, bigquery_table_id)
-        df = pd.read_csv(csv_path)
-        num_rows_before = df.shape[0]
-        df = df[~df['record_id'].isin(existing_record_ids)]
-        num_rows_after = df.shape[0]
-        logger.info(f"Removed this number of duplicate record ids: {num_rows_after - num_rows_before}")
-        df = clean_and_prepare_df(df)
-        upload_to_bigquery(df, bigquery_project, bigquery_table)
+        upload_unique_to_bigquery(csv_path, bigquery_project, bigquery_dataset_id, bigquery_table_id)
 
     async def scrap_special_cars(self):
 
-        first_reg_from = 1900
+        first_reg_from = 1940
         len_makes = len(self.all_cars.items())
+        len_all_cars = sum([len(val) for key, val in self.all_cars.items()])
         async with aiohttp.ClientSession() as session:
             for i, (make, models) in enumerate(self.all_cars.items()):
                 logger.info(f"*** Make {i + 1} / {len_makes}")
@@ -256,49 +247,66 @@ class AutoScout():
 
                 len_models = len(models.items())
                 for i, (model, year_to) in enumerate(models.items()):
-                    logger.info(f"*** Model {i + 1} / {len_models}")
+                    logger.info(f"\n\n*** Scrapping model number: {i + 1} / {len_models}")
+                    logger.info(f"*** Processed cars: {len(self.data)}")
 
-                    logger.info(f"Parsing make {make}, model {model} for year {year_to}")
+                    make = make.replace(' ', '-')
                     model = model.replace(' ', '-')
-
+                    make = 'mini'
+                    model = 'cooper'
                     url = f"https://www.autoscout24.com/lst/{make}/{model}?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&fregto={year_to}&powertype=kw&search_id=18bko0pje7h&sort=age&source=listpage_pagination&ustate=N%2CU"
                     articles_num = await helpers_functions.articles_num(url, session)
+                    logger.info(f"Parsing make {make}, model {model} until year {year_to}\narticles number: {articles_num}")
+                    if articles_num == 0:
+                        continue
+                    if articles_num > 100000: # if model does not present, all vehicles appers in the search, skip this case
+                        continue
                     if articles_num <= 400:
                         # Get all cars and their data
-                        #logger.info(f"Scrapping cars: {make, model}\n")
                         self.data += await self.loop_through_all_pages(url, session, base_url)
                     else:
-                        logger.info(f"More then 400 articles. Looping through years. Article number: {articles_num}")
-                        step_year = 20
+                        #logger.info(f"More then 400 articles. Looping through years. Article number: {articles_num}")
+                        step_year = 1
                         for year in range(first_reg_from, year_to+1, step_year):
-                            url = f"https://www.autoscout24.com/lst/{make}/{model}?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&fregfrom={year}&fregto={year+step_year}&powertype=kw&search_id=18bko0pje7h&sort=age&source=listpage_pagination&ustate=N%2CU"
+                            url = f"https://www.autoscout24.com/lst/{make}/{model}?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&fregfrom={year}&fregto={year}&powertype=kw&search_id=18bko0pje7h&sort=age&source=listpage_pagination&ustate=N%2CU"
                             articles_num = await helpers_functions.articles_num(url, session)
-                            logger.info(f"Scrapping cars: {make, model} in years range {year} - {year + step_year}\n")
+                            logger.info(f"Applied years filter, Scrapping cars: {make, model} in years range {year} - {year}\narticles number: {articles_num}")
+                            if articles_num == 0:
+                                continue
                             if articles_num <= 400:
-
                                 # Get all cars and their data
                                 self.data += await self.loop_through_all_pages(url, session, base_url)
                             else:
-                                logger.info(f"More then 400 articles. Looping through bodys. Article number: {articles_num}")
-                                body_types = [1, 2, 3, 4, 5, 6, 7]
+                                #logger.info(f"More then 400 articles. Looping through bodys. Article number: {articles_num}")
+                                body_types = ['compact', 'convertible', 'coupe', 'suv%2Foff-road%2Fpick-up', 'station-wagon', 'sedans', 'van', 'transporter', 'other']
                                 for body_type in body_types:
-                                    logger.info(f"Scrapping cars: {make, model} in years range {year} - {year + step_year} body type: {body_type}\n")
-                                    url = f"{url}&body={body_type}"
-                                    # Get all cars and their data
-                                    self.data += await self.loop_through_all_pages(url, session, base_url)
+                                    url = f"https://www.autoscout24.com/lst/{make}/{model}/bt_{body_type}?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&fregfrom={year}&fregto={year}&powertype=kw&search_id=18bko0pje7h&sort=age&source=listpage_pagination&ustate=N%2CU"
+                                    articles_num = await helpers_functions.articles_num(url, session)
+                                    logger.info(
+                                        f"Applied bodies filter, Scrapping cars: {make, model} in years range {year} - {year} body type: {body_type}\narticles number: {articles_num}")
+                                    if articles_num == 0:
+                                        continue
+                                    if articles_num <= 400:
+                                        # Get all cars and their data
+                                        self.data += await self.loop_through_all_pages(url, session, base_url)
+                                    else:
+                                        #logger.info(f"More then 400 articles. Looping through gears. Article number: {articles_num}")
+                                        gear_types = ['A', 'M', 'S'] # automatic, manual, semi
+                                        for gear in gear_types:
+                                            url = f"https://www.autoscout24.com/lst/{make}/{model}/bt_{body_type}?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&fregfrom={year}&fregto={year}&powertype=kw&search_id=18bko0pje7h&sort=age&source=listpage_pagination&ustate=N%2CU&gear={gear}"
+                                            articles_num = await helpers_functions.articles_num(url, session)
+
+                                            logger.info(
+                                                f"Applied gear filter, Scrapping cars: {make, model} in years range {year} - {year}, body type: {body_type}, gear: {gear}\narticles number: {articles_num}")
+                                            if articles_num == 0:
+                                                continue
+                                            self.data += await self.loop_through_all_pages(url, session, base_url)
+
                     if test_mode:
                         break
-
                 helpers_functions.write_data_to_csv(self.data, csv_path)
-                bq_table_all_years = 'assetclassics.all_cars_data'
-                existing_record_ids = get_existing_record_ids(bigquery_project, bq_table_all_years.split('.')[0], bq_table_all_years.split('.')[1])
-                df = pd.read_csv(csv_path)
-                num_rows_before = df.shape[0]
-                df = df[~df['record_id'].isin(existing_record_ids)]
-                num_rows_after = df.shape[0]
-                logger.info(f"Removed this number of duplicate record ids: {num_rows_after - num_rows_before}")
-                df = clean_and_prepare_df(df)
-                upload_to_bigquery(df, bigquery_project, bq_table_all_years)
+                bq_table_all_years = 'all_cars_data_test'
+                upload_unique_to_bigquery(csv_path, bigquery_project, bigquery_dataset_id, bq_table_all_years)
                 if test_mode:
                     break
 
