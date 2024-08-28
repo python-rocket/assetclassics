@@ -61,6 +61,7 @@ class AutoScout():
                                 lambda x: {model.lower(): setting for model, setting in zip(x['autoscout_24_model_name'], x['scrape_setting'])}).to_dict()
 
 
+
     async def get_car_details(self, subpage_link, session, article):
         soup, num_failed_articles = await helpers_functions.get_soup_from_page(subpage_link, session)
         self.failed_article_counter += num_failed_articles
@@ -247,34 +248,42 @@ class AutoScout():
     async def scrap_special_cars(self):
 
         first_reg_from = 1900
+        len_makes = len(self.all_cars.items())
         async with aiohttp.ClientSession() as session:
-            for make, models in self.all_cars.items():
-
+            for i, (make, models) in enumerate(self.all_cars.items()):
+                logger.info(f"*** Make {i + 1} / {len_makes}")
                 self.data = []
 
-                for model, year_to in models.items():
+                len_models = len(models.items())
+                for i, (model, year_to) in enumerate(models.items()):
+                    logger.info(f"*** Model {i + 1} / {len_models}")
 
+                    logger.info(f"Parsing make {make}, model {model} for year {year_to}")
                     model = model.replace(' ', '-')
 
                     url = f"https://www.autoscout24.com/lst/{make}/{model}?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&fregto={year_to}&powertype=kw&search_id=18bko0pje7h&sort=age&source=listpage_pagination&ustate=N%2CU"
                     articles_num = await helpers_functions.articles_num(url, session)
                     if articles_num <= 400:
                         # Get all cars and their data
-                        logger.info(f"Scrapping cars: {make, model}\n")
+                        #logger.info(f"Scrapping cars: {make, model}\n")
                         self.data += await self.loop_through_all_pages(url, session, base_url)
                     else:
-                        for year in range(first_reg_from, year_to+1):
-                            url = f"https://www.autoscout24.com/lst/{make}/{model}?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&fregfrom={year}&fregto={year}&powertype=kw&search_id=18bko0pje7h&sort=age&source=listpage_pagination&ustate=N%2CU"
+                        logger.info(f"More then 400 articles. Looping through years. Article number: {articles_num}")
+                        step_year = 20
+                        for year in range(first_reg_from, year_to+1, step_year):
+                            url = f"https://www.autoscout24.com/lst/{make}/{model}?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&fregfrom={year}&fregto={year+step_year}&powertype=kw&search_id=18bko0pje7h&sort=age&source=listpage_pagination&ustate=N%2CU"
                             articles_num = await helpers_functions.articles_num(url, session)
+                            logger.info(f"Scrapping cars: {make, model} in years range {year} - {year + step_year}\n")
                             if articles_num <= 400:
-                                logger.info(f"Scrapping cars: {make, model} in years range {year} - {year}\n")
+
                                 # Get all cars and their data
                                 self.data += await self.loop_through_all_pages(url, session, base_url)
                             else:
+                                logger.info(f"More then 400 articles. Looping through bodys. Article number: {articles_num}")
                                 body_types = [1, 2, 3, 4, 5, 6, 7]
                                 for body_type in body_types:
+                                    logger.info(f"Scrapping cars: {make, model} in years range {year} - {year + step_year} body type: {body_type}\n")
                                     url = f"{url}&body={body_type}"
-                                    logger.info(f"Scrapping cars: {make, model} in years range {year} - {year} body type: {body_type}\n")
                                     # Get all cars and their data
                                     self.data += await self.loop_through_all_pages(url, session, base_url)
                     if test_mode:
