@@ -240,6 +240,7 @@ class AutoScout():
         first_reg_from = 1940
         len_makes = len(self.all_cars.items())
         len_all_cars = sum([len(val) for key, val in self.all_cars.items()])
+        models_processed = 0
         async with aiohttp.ClientSession() as session:
             for i, (make, models) in enumerate(self.all_cars.items()):
                 logger.info(f"*** Make {i + 1} / {len_makes}")
@@ -248,7 +249,8 @@ class AutoScout():
                 len_models = len(models.items())
                 for i, (model, year_to) in enumerate(models.items()):
                     logger.info(f"\n\n*** Scrapping model number: {i + 1} / {len_models}")
-                    logger.info(f"*** Processed cars: {len(self.data)}")
+                    logger.info(f"*** Processed models: {models_processed}/{len_all_cars}")
+                    logger.info(f"*** Processed total cars: {len(self.data)}")
 
                     make = make.replace(' ', '-')
                     model = model.replace(' ', '-')
@@ -309,6 +311,7 @@ class AutoScout():
                 upload_unique_to_bigquery(csv_path, bigquery_project, bigquery_dataset_id, bq_table_all_years)
                 if test_mode:
                     break
+                models_processed = len(models)
 
     async def run(self):
         helpers_functions.delete_csv_if_exists(csv_path)
