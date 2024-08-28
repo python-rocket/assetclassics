@@ -310,7 +310,7 @@ class AutoScout():
                 upload_unique_to_bigquery(csv_path, bigquery_project, bigquery_dataset_id, bq_table_all_years)
                 if test_mode:
                     break
-                models_processed = len(models)
+                models_processed += len(models)
 
     async def run(self):
         helpers_functions.delete_csv_if_exists(csv_path)
