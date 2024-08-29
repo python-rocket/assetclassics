@@ -241,16 +241,20 @@ class AutoScout():
         len_makes = len(self.all_cars.items())
         len_all_cars = sum([len(val) for key, val in self.all_cars.items()])
         models_processed = 0
+        cars_processed = 0
         async with aiohttp.ClientSession() as session:
             for i, (make, models) in enumerate(self.all_cars.items()):
                 logger.info(f"*** Make {i + 1} / {len_makes}")
+                cars_processed += len(self.data)
                 self.data = []
 
                 len_models = len(models.items())
                 for i, (model, year_to) in enumerate(models.items()):
                     logger.info(f"\n\n*** Scrapping model number: {i + 1} / {len_models}")
                     logger.info(f"*** Processed models: {models_processed}/{len_all_cars}")
-                    logger.info(f"*** Processed total cars: {len(self.data)}")
+                    logger.info(f"*** Processed total cars: {cars_processed}")
+
+                    models_processed += 1
 
                     make = make.replace(' ', '-')
                     model = model.replace(' ', '-')
@@ -302,7 +306,6 @@ class AutoScout():
                                             if articles_num == 0:
                                                 continue
                                             self.data += await self.loop_through_all_pages(url, session, base_url)
-                    models_processed += 1
                     if test_mode:
                         break
                 helpers_functions.write_data_to_csv(self.data, csv_path)
