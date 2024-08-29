@@ -35,7 +35,7 @@ class AutoScout():
         self.page_counter = 0
 
     def get_special_cars(self):
-        columns = ['autoscout_24_make_name', 'autoscout_24_model_name', 'scrape_setting']
+        columns = ['_row', 'autoscout_24_make_name', 'autoscout_24_model_name', 'scrape_setting']
         table_id = 'taxonomy_and_scraping_setting'
         df = read_from_bigquery(bigquery_project, bigquery_dataset_id, table_id, columns=columns)
 
@@ -49,13 +49,20 @@ class AutoScout():
         until_year_cars['scrape_setting'] = until_year_cars['scrape_setting'].astype(int)
 
         all_cars = pd.concat([all_years_cars, until_year_cars])
+        all_cars['_row'] = all_cars['_row'].astype(int)
+        all_cars = all_cars.sort_values(by='_row')
 
-        self.no_need_cars = no_need_cars.groupby(no_need_cars['autoscout_24_make_name'].str.lower())['autoscout_24_model_name'].apply(lambda x: set(x.str.lower())).to_dict()
+        min_value = 1
+        max_value = 600
+        all_cars = all_cars[(all_cars['_row'] >= min_value) & (all_cars['_row'] <= max_value)]
 
-        self.all_years_cars = all_years_cars.groupby(all_years_cars['autoscout_24_make_name'].str.lower()).apply(
-                                lambda x: {model.lower(): setting for model, setting in zip(x['autoscout_24_model_name'], x['scrape_setting'])}).to_dict()
-        self.until_year_cars = until_year_cars.groupby(until_year_cars['autoscout_24_make_name'].str.lower()).apply(
-                                lambda x: {model.lower(): setting for model, setting in zip(x['autoscout_24_model_name'], x['scrape_setting'])}).to_dict()
+
+        # self.no_need_cars = no_need_cars.groupby(no_need_cars['autoscout_24_make_name'].str.lower())['autoscout_24_model_name'].apply(lambda x: set(x.str.lower())).to_dict()
+        #
+        # self.all_years_cars = all_years_cars.groupby(all_years_cars['autoscout_24_make_name'].str.lower()).apply(
+        #                         lambda x: {model.lower(): setting for model, setting in zip(x['autoscout_24_model_name'], x['scrape_setting'])}).to_dict()
+        # self.until_year_cars = until_year_cars.groupby(until_year_cars['autoscout_24_make_name'].str.lower()).apply(
+        #                         lambda x: {model.lower(): setting for model, setting in zip(x['autoscout_24_model_name'], x['scrape_setting'])}).to_dict()
 
         self.all_cars = all_cars.groupby(all_cars['autoscout_24_make_name'].str.lower()).apply(
                                 lambda x: {model.lower(): setting for model, setting in zip(x['autoscout_24_model_name'], x['scrape_setting'])}).to_dict()
@@ -244,15 +251,13 @@ class AutoScout():
         cars_processed = 0
         async with aiohttp.ClientSession() as session:
             for i, (make, models) in enumerate(self.all_cars.items()):
+                logger.info(f"*** Processed total cars: {cars_processed}")
                 logger.info(f"*** Make {i + 1} / {len_makes}")
-                cars_processed += len(self.data)
                 self.data = []
-
                 len_models = len(models.items())
                 for i, (model, year_to) in enumerate(models.items()):
                     logger.info(f"\n\n*** Scrapping model number: {i + 1} / {len_models}")
                     logger.info(f"*** Processed models: {models_processed}/{len_all_cars}")
-                    logger.info(f"*** Processed total cars: {cars_processed}")
 
                     models_processed += 1
 
@@ -311,6 +316,7 @@ class AutoScout():
                 helpers_functions.write_data_to_csv(self.data, csv_path)
                 bq_table_all_years = 'all_cars_data_2'
                 upload_unique_to_bigquery(csv_path, bigquery_project, bigquery_dataset_id, bq_table_all_years)
+                cars_processed += len(self.data)
                 if test_mode:
                     break
 
