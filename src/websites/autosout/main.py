@@ -10,7 +10,7 @@ from datetime import datetime
 from src.helpers import HelperFunctions
 from src.extract_html import get_car_summary, get_section_data
 from src.extract_json import get_additional_json_data
-from src.bigquery import clean_and_prepare_df, upload_to_bigquery, get_existing_record_ids, read_from_bigquery, upload_unique_to_bigquery
+from src.bigquery import clean_and_prepare_df, upload_to_bigquery, get_existing_record_ids, read_from_bigquery, upload_unique_to_bigquery, upload_to_bigquery_from_csv
 
 import traceback
 
@@ -33,6 +33,11 @@ class AutoScout():
         self.article_counter = 0
         self.failed_article_counter = 0
         self.page_counter = 0
+
+    def get_scrapped_cars(self):
+        columns = ['record_id']
+        df = read_from_bigquery(bigquery_project, bigquery_dataset_id, bq_table_all_years, columns=columns)
+        self.record_ids = set(df['record_id'])
 
     def get_special_cars(self):
         columns = ['_row', 'autoscout_24_make_name', 'autoscout_24_model_name', 'scrape_setting']
@@ -171,6 +176,10 @@ class AutoScout():
             if articles:
                 for article in articles:
                     self.article_counter += 1
+
+                    record_id = article.get('data-guid')  # if article in bq table already, do not process it
+                    if record_id in self.record_ids:
+                        continue
                     subpage_link = helpers_functions.get_subpage_link(article, base_url)
                     task = asyncio.create_task(self.get_car_details(subpage_link, session, article))
                     tasks.append(task)
@@ -313,8 +322,7 @@ class AutoScout():
                     if test_mode:
                         break
                 helpers_functions.write_data_to_csv(self.data, csv_path)
-                bq_table_all_years = 'all_cars_data_3'
-                upload_unique_to_bigquery(csv_path, bigquery_project, bigquery_dataset_id, bq_table_all_years)
+                upload_to_bigquery_from_csv(csv_path, bigquery_project, bigquery_dataset_id, bq_table_all_years)
                 cars_processed += len(self.data)
                 if test_mode:
                     break
@@ -322,6 +330,8 @@ class AutoScout():
 
     async def run(self):
         helpers_functions.delete_csv_if_exists(csv_path)
+        # Read cars record_ids that already in bq
+        self.get_scrapped_cars()
         # Read special cars parameters from bq
         self.get_special_cars()
         if is_aggregation:
@@ -356,6 +366,7 @@ if __name__ == "__main__":
     bigquery_table = args.big_query_table # "assetclassics.autoscout_scrapper_sample_11"
     bigquery_dataset_id = args.big_query_table.split(".")[0]
     bigquery_table_id = args.big_query_table.split(".")[1]
+    bq_table_all_years = 'all_cars_data_3'
 
     logging.basicConfig(
         level=logging.DEBUG,  # Set the log level

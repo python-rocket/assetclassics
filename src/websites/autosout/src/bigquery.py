@@ -150,3 +150,15 @@ def upload_unique_to_bigquery(csv_path, bigquery_project, bigquery_dataset_id, b
     df = clean_and_prepare_df(df)
     bigquery_table = f"{bigquery_dataset_id}.{bigquery_table_id}"
     upload_to_bigquery(df, bigquery_project, bigquery_table)
+
+
+def upload_to_bigquery_from_csv(csv_path, bigquery_project, bigquery_dataset_id, bigquery_table_id):
+    try:
+        df = pd.read_csv(csv_path)
+    except pd.errors.EmptyDataError:
+        logger.info("The CSV file is empty, not writing to db.")
+        return
+
+    df = clean_and_prepare_df(df)
+    bigquery_table = f"{bigquery_dataset_id}.{bigquery_table_id}"
+    upload_to_bigquery(df, bigquery_project, bigquery_table)
