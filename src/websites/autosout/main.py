@@ -35,9 +35,13 @@ class AutoScout():
         self.page_counter = 0
 
     def get_scrapped_cars(self):
-        columns = ['record_id']
-        df = read_from_bigquery(bigquery_project, bigquery_dataset_id, bq_table_all_years, columns=columns)
-        self.record_ids = set(df['record_id'])
+        try:
+            columns = ['record_id']
+            df = read_from_bigquery(bigquery_project, bigquery_dataset_id, bq_table_all_years, columns=columns)
+            self.record_ids = set(df['record_id'])
+        except Exception as e:
+            logger.info(e)
+            self.record_ids = set()
 
     def get_special_cars(self):
         columns = ['_row', 'autoscout_24_make_name', 'autoscout_24_model_name', 'scrape_setting']
@@ -272,6 +276,8 @@ class AutoScout():
 
                     make = make.replace(' ', '-')
                     model = model.replace(' ', '-')
+                    make = 'mini'
+                    model = 'cooper'
 
                     url = f"https://www.autoscout24.com/lst/{make}/{model}?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&fregto={year_to}&powertype=kw&search_id=18bko0pje7h&sort=age&source=listpage_pagination&ustate=N%2CU"
                     articles_num = await helpers_functions.articles_num(url, session)
@@ -316,6 +322,9 @@ class AutoScout():
                                             articles_num = await helpers_functions.articles_num(url, session)
                                             logger.info(
                                                 f"Applied gear filter, Scrapping cars: {make, model} in years range {year} - {year}, body type: {body_type}, gear: {gear}\narticles number: {articles_num}")
+                                            if articles_num > 400:
+                                                models_more_400 = [{'make': make, 'model': model, 'year': year, 'body_type': body_type, 'gear': gear}]
+                                                helpers_functions.write_data_to_csv(models_more_400, csv_path_models_more_400)
                                             if articles_num == 0:
                                                 continue
                                             self.data += await self.loop_through_all_pages(url, session, base_url)
@@ -367,6 +376,7 @@ if __name__ == "__main__":
     bigquery_dataset_id = args.big_query_table.split(".")[0]
     bigquery_table_id = args.big_query_table.split(".")[1]
     bq_table_all_years = 'all_cars_data_3'
+    csv_path_models_more_400 = "result/models_more_400.csv"
 
     logging.basicConfig(
         level=logging.DEBUG,  # Set the log level

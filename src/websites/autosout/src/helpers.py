@@ -117,6 +117,7 @@ class HelperFunctions:
         else:
             df.to_csv(file_path, mode='w', header=True, index=False)
 
+
     def delete_csv_if_exists(self, file_path):
         if os.path.isfile(file_path):
             self.logger.info(f"File {file_path} already exists. Deleting it.")
