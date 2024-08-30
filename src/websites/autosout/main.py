@@ -33,6 +33,7 @@ class AutoScout():
         self.article_counter = 0
         self.failed_article_counter = 0
         self.page_counter = 0
+        self.failed_cars = []
 
     def get_scrapped_cars(self):
         try:
@@ -80,6 +81,7 @@ class AutoScout():
         soup, num_failed_articles = await helpers_functions.get_soup_from_page(subpage_link, session)
         self.failed_article_counter += num_failed_articles
         if soup is None:
+            self.failed_cars.append({"link": subpage_link})
             return None
 
         car_summary = get_car_summary(article, base_url)
@@ -276,8 +278,6 @@ class AutoScout():
 
                     make = make.replace(' ', '-')
                     model = model.replace(' ', '-')
-                    make = 'mini'
-                    model = 'cooper'
 
                     url = f"https://www.autoscout24.com/lst/{make}/{model}?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&fregto={year_to}&powertype=kw&search_id=18bko0pje7h&sort=age&source=listpage_pagination&ustate=N%2CU"
                     articles_num = await helpers_functions.articles_num(url, session)
@@ -333,12 +333,16 @@ class AutoScout():
                 helpers_functions.write_data_to_csv(self.data, csv_path)
                 upload_to_bigquery_from_csv(csv_path, bigquery_project, bigquery_dataset_id, bq_table_all_years)
                 cars_processed += len(self.data)
+                # update failed cars file
+                helpers_functions.write_data_to_csv(self.failed_cars, csv_path_failed_cars)
                 if test_mode:
                     break
 
 
     async def run(self):
         helpers_functions.delete_csv_if_exists(csv_path)
+        helpers_functions.delete_csv_if_exists(csv_path_models_more_400)
+        helpers_functions.delete_csv_if_exists(csv_path_failed_cars)
         # Read cars record_ids that already in bq
         self.get_scrapped_cars()
         # Read special cars parameters from bq
@@ -369,14 +373,15 @@ if __name__ == "__main__":
     start_time = time.time()  # Start the time
     is_aggregation = args.is_aggregation
     test_mode = args.test_mode
-    csv_path =args.csv_path #"result/autoscout_data_7.csv"
+    csv_path = args.csv_path #"result/autoscout_data_7.csv"
     logger_path = args.logger_path
     bigquery_project = args.big_query_project # "python-rocket-1"
     bigquery_table = args.big_query_table # "assetclassics.autoscout_scrapper_sample_11"
     bigquery_dataset_id = args.big_query_table.split(".")[0]
     bigquery_table_id = args.big_query_table.split(".")[1]
-    bq_table_all_years = 'all_cars_data_3'
+    bq_table_all_years = 'all_cars_data_1'
     csv_path_models_more_400 = "result/models_more_400.csv"
+    csv_path_failed_cars = "result/failed_cars.csv"
 
     logging.basicConfig(
         level=logging.DEBUG,  # Set the log level
@@ -395,6 +400,7 @@ if __name__ == "__main__":
     base_url = "https://www.autoscout24.com"
 
     asyncio.run(autoscout.run())
+
 
     helpers_functions.get_execution_time(start_time)
 
