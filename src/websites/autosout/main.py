@@ -53,7 +53,7 @@ class AutoScout():
         all_cars = all_cars.sort_values(by='_row')
 
         min_value = 1
-        max_value = 600
+        max_value = 879
         all_cars = all_cars[(all_cars['_row'] >= min_value) & (all_cars['_row'] <= max_value)]
 
 
@@ -305,7 +305,6 @@ class AutoScout():
                                         for gear in gear_types:
                                             url = f"https://www.autoscout24.com/lst/{make}/{model}/bt_{body_type}?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&fregfrom={year}&fregto={year}&powertype=kw&search_id=18bko0pje7h&sort=age&source=listpage_pagination&ustate=N%2CU&gear={gear}"
                                             articles_num = await helpers_functions.articles_num(url, session)
-
                                             logger.info(
                                                 f"Applied gear filter, Scrapping cars: {make, model} in years range {year} - {year}, body type: {body_type}, gear: {gear}\narticles number: {articles_num}")
                                             if articles_num == 0:
@@ -314,7 +313,7 @@ class AutoScout():
                     if test_mode:
                         break
                 helpers_functions.write_data_to_csv(self.data, csv_path)
-                bq_table_all_years = 'all_cars_data_2'
+                bq_table_all_years = 'all_cars_data_3'
                 upload_unique_to_bigquery(csv_path, bigquery_project, bigquery_dataset_id, bq_table_all_years)
                 cars_processed += len(self.data)
                 if test_mode:
