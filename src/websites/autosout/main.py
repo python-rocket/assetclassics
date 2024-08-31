@@ -47,7 +47,8 @@ class AutoScout():
     def get_special_cars(self):
         columns = ['_row', 'autoscout_24_make_name', 'autoscout_24_model_name', 'scrape_setting']
         table_id = 'taxonomy_and_scraping_setting'
-        df = read_from_bigquery(bigquery_project, bigquery_dataset_id, table_id, columns=columns)
+        special_cars_dataset = 'assetclassics'
+        df = read_from_bigquery(bigquery_project, special_cars_dataset, table_id, columns=columns)
 
         no_need_cars = df[df['scrape_setting'] == 'No']
 
