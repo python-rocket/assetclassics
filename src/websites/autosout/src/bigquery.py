@@ -30,16 +30,19 @@ def clean_and_prepare_df(df):
     df = df.replace(np.nan, None)
     df = df.replace("None", None)
     df = df.replace("nan", None)
+
     return df.where(pd.notnull(df), None)
 
 
 def upload_to_bigquery(df, project, table_id):
     # Convert all columns in the DataFrame to strings
-    df = df.astype(str)
     logger.info("RESULT DF")
     logger.info(df)
     client = bigquery.Client(project=project)
-    job = client.load_table_from_dataframe(df, table_id)
+    # set all columns to string
+    schema = [bigquery.SchemaField(column, 'STRING') for column in df.columns]
+    job_config = bigquery.LoadJobConfig(schema=schema)
+    job = client.load_table_from_dataframe(df, table_id, job_config=job_config)
     job.result()
 
     response = {
