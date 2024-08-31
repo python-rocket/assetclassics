@@ -230,32 +230,7 @@ class AutoScout():
 
         return articles_parsed
 
-    async def dynamic_steps_logic(self):
-        # After price limit last: Get all remaining data
-        if self.from_price >= self.price_limit_last:
-            self.step = 100000000
-            next_is_last_round = True
-            self.from_price = self.to_price + 1
-        #  After price limit 1: Change Step size
-        elif self.to_price == self.price_limit_1 - 1:
-            self.step = 1000
-            #print(f"Increasing Steps to: {step}")
-            self.from_price = self.price_limit_1
-        else:
-            self.from_price = self.from_price + self.step
-        # Get all which have higher price
-        self.to_price = self.from_price + self.step - 1
 
-    async def get_newest_data(self):
-        logger.info("Start: Getting newest data")
-        url = f"https://www.autoscout24.com/lst?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&powertype=kw&search_id=gd6zvktyks&sort=age&source=listpage_pagination&ustate=N%2CU"
-
-        # Get all cars ant their data
-        async with aiohttp.ClientSession() as session:
-            data = await self.loop_through_all_pages(url, session, base_url)
-
-        helpers_functions.write_data_to_csv(data, csv_path)
-        upload_unique_to_bigquery(csv_path, bigquery_project, bigquery_dataset_id, bigquery_table_id)
 
     async def scrap_special_cars(self):
 
@@ -330,8 +305,12 @@ class AutoScout():
                                             self.data += await self.loop_through_all_pages(url, session, base_url)
                     if test_mode:
                         break
-                helpers_functions.write_data_to_csv(self.data, csv_path)
-                upload_to_bigquery_from_csv(csv_path, bigquery_project, bigquery_dataset_id, bq_table_all_years)
+                if self.data:
+                    helpers_functions.write_data_to_csv(self.data, csv_path)
+                    upload_to_bigquery_from_csv(csv_path, bigquery_project, bigquery_dataset_id, bq_table_all_years)
+
+                helpers_functions.delete_csv_if_exists(csv_path)
+
                 cars_processed += len(self.data)
                 # update failed cars file
                 if self.failed_cars:
@@ -365,6 +344,10 @@ if __name__ == "__main__":
     parser.add_argument("-p", "--csv_path", help="Path of csv to store results", type=str, required=True)
     parser.add_argument("-bp", "--big_query_project", help="project where to write big query table", type=str, required=True)
     parser.add_argument("-bt", "--big_query_table", help="big query table (dataset.table)", type=str, required=True)
+    parser.add_argument("-400", "--csv_path_more_400_results",
+                        help="Path of csv to store cars that have more than 400 results with all filters", type=str, required=True)
+    parser.add_argument("-fc", "--csv_path_failed_cars",
+                        help="Path of csv to store links failed to scrap", type=str, required=True)
     parser.add_argument("-l", "--logger_path", help="path of logger file", type=str, required=True)
 
     args = parser.parse_args()
@@ -377,32 +360,62 @@ if __name__ == "__main__":
     test_mode = args.test_mode
     csv_path = args.csv_path #"result/autoscout_data_7.csv"
     logger_path = args.logger_path
-    bigquery_project = args.big_query_project # "python-rocket-1"
-    bigquery_table = args.big_query_table # "assetclassics.autoscout_scrapper_sample_11"
+    bigquery_project = args.big_query_project  # "python-rocket-1"
+    bigquery_table = args.big_query_table  # "assetclassics.autoscout_scrapper_sample_11"
     bigquery_dataset_id = args.big_query_table.split(".")[0]
-    bigquery_table_id = args.big_query_table.split(".")[1]
-    bq_table_all_years = 'all_cars_data_mischa'
-    csv_path_models_more_400 = "result/models_more_400.csv"
-    csv_path_failed_cars = "result/failed_cars.csv"
+    bq_table_all_years = args.big_query_table.split(".")[1]
+    csv_path_models_more_400 = args.csv_path_more_400_results
+    csv_path_failed_cars = args.csv_path_failed_cars
 
-    logging.basicConfig(
-        level=logging.DEBUG,  # Set the log level
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',  # Set the log format
-        handlers=[
-            logging.FileHandler(logger_path),  # Log to a file
-            logging.StreamHandler()  # Also log to the console
-        ]
-    )
     logger = logging.getLogger(__name__)
-    helpers_functions = HelperFunctions(logger)
+    logger.setLevel(logging.DEBUG)  # Set the log level
 
-    #bigquery_project = "ac-vehicle-data"
-    #bigquery_table = "autoscout24.autoscout_scrapper_sample_v1"
+    # Create a file handler and set the level and format
+    file_handler = logging.FileHandler(logger_path)
+    file_handler.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    file_handler.setFormatter(formatter)
+
+    # Add the file handler to the logger
+    logger.addHandler(file_handler)
+
+    helpers_functions = HelperFunctions(logger)
 
     base_url = "https://www.autoscout24.com"
 
     asyncio.run(autoscout.run())
 
-
     helpers_functions.get_execution_time(start_time)
 
+
+
+########  FUNCTIONS THAT CURRENTLY NOT IN USE
+
+
+
+# async def dynamic_steps_logic(self):
+#     # After price limit last: Get all remaining data
+#     if self.from_price >= self.price_limit_last:
+#         self.step = 100000000
+#         next_is_last_round = True
+#         self.from_price = self.to_price + 1
+#     #  After price limit 1: Change Step size
+#     elif self.to_price == self.price_limit_1 - 1:
+#         self.step = 1000
+#         #print(f"Increasing Steps to: {step}")
+#         self.from_price = self.price_limit_1
+#     else:
+#         self.from_price = self.from_price + self.step
+#     # Get all which have higher price
+#     self.to_price = self.from_price + self.step - 1
+#
+# async def get_newest_data(self):
+#     logger.info("Start: Getting newest data")
+#     url = f"https://www.autoscout24.com/lst?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&powertype=kw&search_id=gd6zvktyks&sort=age&source=listpage_pagination&ustate=N%2CU"
+#
+#     # Get all cars ant their data
+#     async with aiohttp.ClientSession() as session:
+#         data = await self.loop_through_all_pages(url, session, base_url)
+#
+#     helpers_functions.write_data_to_csv(data, csv_path)
+#     upload_unique_to_bigquery(csv_path, bigquery_project, bigquery_dataset_id, bigquery_table_id)
