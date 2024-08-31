@@ -62,8 +62,8 @@ class AutoScout():
         all_cars['_row'] = all_cars['_row'].astype(int)
         all_cars = all_cars.sort_values(by='_row')
 
-        min_value = 1
-        max_value = 879
+        min_value = 880
+        max_value = 12666
         all_cars = all_cars[(all_cars['_row'] >= min_value) & (all_cars['_row'] <= max_value)]
 
 
@@ -334,7 +334,9 @@ class AutoScout():
                 upload_to_bigquery_from_csv(csv_path, bigquery_project, bigquery_dataset_id, bq_table_all_years)
                 cars_processed += len(self.data)
                 # update failed cars file
-                helpers_functions.write_data_to_csv(self.failed_cars, csv_path_failed_cars)
+                if self.failed_cars:
+                    helpers_functions.write_data_to_csv(self.failed_cars, csv_path_failed_cars)
+                self.failed_cars = []
                 if test_mode:
                     break
 
@@ -379,7 +381,7 @@ if __name__ == "__main__":
     bigquery_table = args.big_query_table # "assetclassics.autoscout_scrapper_sample_11"
     bigquery_dataset_id = args.big_query_table.split(".")[0]
     bigquery_table_id = args.big_query_table.split(".")[1]
-    bq_table_all_years = 'all_cars_data_1'
+    bq_table_all_years = 'all_cars_data_mischa'
     csv_path_models_more_400 = "result/models_more_400.csv"
     csv_path_failed_cars = "result/failed_cars.csv"
 
