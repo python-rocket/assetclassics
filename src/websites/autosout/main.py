@@ -47,8 +47,8 @@ class AutoScout():
     def get_special_cars(self):
         columns = ['_row', 'autoscout_24_make_name', 'autoscout_24_model_name', 'scrape_setting']
         table_id = 'taxonomy_and_scraping_setting'
-        special_cars_dataset = 'assetclassics'
-        df = read_from_bigquery(bigquery_project, special_cars_dataset, table_id, columns=columns)
+
+        df = read_from_bigquery(bigquery_project, bigquery_dataset_id, table_id, columns=columns)
 
         no_need_cars = df[df['scrape_setting'] == 'No']
 
@@ -63,10 +63,9 @@ class AutoScout():
         all_cars['_row'] = all_cars['_row'].astype(int)
         all_cars = all_cars.sort_values(by='_row')
 
-        min_value = 880
+        min_value = 1
         max_value = 12666
         all_cars = all_cars[(all_cars['_row'] >= min_value) & (all_cars['_row'] <= max_value)]
-
 
         # self.no_need_cars = no_need_cars.groupby(no_need_cars['autoscout_24_make_name'].str.lower())['autoscout_24_model_name'].apply(lambda x: set(x.str.lower())).to_dict()
         #
@@ -234,7 +233,7 @@ class AutoScout():
 
 
     async def scrap_special_cars(self):
-
+        price_from = 20000
         first_reg_from = 1940
         len_makes = len(self.all_cars.items())
         len_all_cars = sum([len(val) for key, val in self.all_cars.items()])
@@ -255,7 +254,7 @@ class AutoScout():
                     make = make.replace(' ', '-')
                     model = model.replace(' ', '-')
 
-                    url = f"https://www.autoscout24.com/lst/{make}/{model}?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&fregto={year_to}&powertype=kw&search_id=18bko0pje7h&sort=age&source=listpage_pagination&ustate=N%2CU"
+                    url = f"https://www.autoscout24.com/lst/{make}/{model}?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&fregto={year_to}&powertype=kw&pricefrom={price_from}&search_id=18bko0pje7h&sort=age&source=listpage_pagination&ustate=N%2CU"
                     articles_num = await helpers_functions.articles_num(url, session)
                     logger.info(f"Parsing make {make}, model {model} until year {year_to}\narticles number: {articles_num}")
                     if articles_num == 0:
@@ -269,7 +268,7 @@ class AutoScout():
                         #logger.info(f"More then 400 articles. Looping through years. Article number: {articles_num}")
                         step_year = 1
                         for year in range(first_reg_from, year_to+1, step_year):
-                            url = f"https://www.autoscout24.com/lst/{make}/{model}?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&fregfrom={year}&fregto={year}&powertype=kw&search_id=18bko0pje7h&sort=age&source=listpage_pagination&ustate=N%2CU"
+                            url = f"https://www.autoscout24.com/lst/{make}/{model}?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&fregfrom={year}&fregto={year}&powertype=kw&pricefrom={price_from}&search_id=18bko0pje7h&sort=age&source=listpage_pagination&ustate=N%2CU"
                             articles_num = await helpers_functions.articles_num(url, session)
                             logger.info(f"Applied years filter, Scrapping cars: {make, model} in years range {year} - {year}\narticles number: {articles_num}")
                             if articles_num == 0:
@@ -281,7 +280,7 @@ class AutoScout():
                                 #logger.info(f"More then 400 articles. Looping through bodys. Article number: {articles_num}")
                                 body_types = ['compact', 'convertible', 'coupe', 'suv%2Foff-road%2Fpick-up', 'station-wagon', 'sedans', 'van', 'transporter', 'other']
                                 for body_type in body_types:
-                                    url = f"https://www.autoscout24.com/lst/{make}/{model}/bt_{body_type}?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&fregfrom={year}&fregto={year}&powertype=kw&search_id=18bko0pje7h&sort=age&source=listpage_pagination&ustate=N%2CU"
+                                    url = f"https://www.autoscout24.com/lst/{make}/{model}/bt_{body_type}?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&fregfrom={year}&fregto={year}&powertype=kw&pricefrom={price_from}&search_id=18bko0pje7h&sort=age&source=listpage_pagination&ustate=N%2CU"
                                     articles_num = await helpers_functions.articles_num(url, session)
                                     logger.info(
                                         f"Applied bodies filter, Scrapping cars: {make, model} in years range {year} - {year} body type: {body_type}\narticles number: {articles_num}")
@@ -294,7 +293,7 @@ class AutoScout():
                                         #logger.info(f"More then 400 articles. Looping through gears. Article number: {articles_num}")
                                         gear_types = ['A', 'M', 'S'] # automatic, manual, semi
                                         for gear in gear_types:
-                                            url = f"https://www.autoscout24.com/lst/{make}/{model}/bt_{body_type}?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&fregfrom={year}&fregto={year}&powertype=kw&search_id=18bko0pje7h&sort=age&source=listpage_pagination&ustate=N%2CU&gear={gear}"
+                                            url = f"https://www.autoscout24.com/lst/{make}/{model}/bt_{body_type}?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&fregfrom={year}&fregto={year}&powertype=kw&pricefrom={price_from}&search_id=18bko0pje7h&sort=age&source=listpage_pagination&ustate=N%2CU&gear={gear}"
                                             articles_num = await helpers_functions.articles_num(url, session)
                                             logger.info(
                                                 f"Applied gear filter, Scrapping cars: {make, model} in years range {year} - {year}, body type: {body_type}, gear: {gear}\narticles number: {articles_num}")
@@ -329,18 +328,15 @@ class AutoScout():
         self.get_scrapped_cars()
         # Read special cars parameters from bq
         self.get_special_cars()
-        if is_aggregation:
-            await self.scrap_special_cars()
-            logger.info("FINAL: Number of processed articles {}".format(self.article_counter))
-        else:
-            await self.get_newest_data()
+
+        await self.scrap_special_cars()
+        logger.info("FINAL: Number of processed articles {}".format(self.article_counter))
 
 
 
 # Main script
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Description of your program")
-    parser.add_argument("-a", "--is_aggregation", help="If true will reaggregate all data. Otherwise only newest 20 pages.", type=ast.literal_eval, required=True)
     parser.add_argument("-t", "--test_mode", help="If true test mode will be on. Only sample data will be processed", type=ast.literal_eval, required=True)
     parser.add_argument("-p", "--csv_path", help="Path of csv to store results", type=str, required=True)
     parser.add_argument("-bp", "--big_query_project", help="project where to write big query table", type=str, required=True)
@@ -357,7 +353,6 @@ if __name__ == "__main__":
     autoscout = AutoScout()
     import time
     start_time = time.time()  # Start the time
-    is_aggregation = args.is_aggregation
     test_mode = args.test_mode
     csv_path = args.csv_path #"result/autoscout_data_7.csv"
     logger_path = args.logger_path
