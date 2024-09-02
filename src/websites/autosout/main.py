@@ -77,6 +77,7 @@ class AutoScout():
         self.all_cars = all_cars.groupby(all_cars['autoscout_24_make_name'].str.lower()).apply(
                                 lambda x: {model.lower(): setting for model, setting in zip(x['autoscout_24_model_name'], x['scrape_setting'])}).to_dict()
 
+
     async def get_car_details(self, subpage_link, session, article):
         soup, num_failed_articles = await helpers_functions.get_soup_from_page(subpage_link, session)
         self.failed_article_counter += num_failed_articles
@@ -208,19 +209,19 @@ class AutoScout():
         for car in car_details:
             try:
                 # Avoid no needed cars
-                make = car.get('car_summary').get('make_orig').lower()
-                model = car.get('car_summary').get('model_orig').lower()
-                year = car.get('additional_json_data').get('production_year')
+                # make = car.get('car_summary').get('make_orig').lower()
+                # model = car.get('car_summary').get('model_orig').lower()
+                # year = car.get('additional_json_data').get('production_year')
 
-                if make in self.all_cars and model in self.all_cars[make] and year:
-                    if int(year[:4]) <= int(self.all_cars[make][model]):
-                        data_combined = await self.combine_data(car["additional_json_data"],
-                                                                car["section_data_combined"], car["car_summary"],
-                                                                car["additional_data"])
-                        articles_parsed.append(data_combined)
+                # if make in self.all_cars and model in self.all_cars[make] and year:
+                #     if int(year[:4]) <= int(self.all_cars[make][model]):
+                data_combined = await self.combine_data(car["additional_json_data"],
+                                                        car["section_data_combined"], car["car_summary"],
+                                                        car["additional_data"])
+                articles_parsed.append(data_combined)
 
-                else:
-                    continue
+                # else:
+                #     continue
 
             except Exception as e:
                 logger.error("failed processing this article: Going to next article")
@@ -229,8 +230,6 @@ class AutoScout():
                 continue
 
         return articles_parsed
-
-
 
     async def scrap_special_cars(self):
         price_from = 20000
@@ -319,8 +318,16 @@ class AutoScout():
                 if test_mode:
                     break
 
+    async def scrap_over_400_cars(self):
+        df = pd.read_csv(csv_path_models_more_400)
+        price_from = 20000
+        for i, row in df.iterrows():
+            url = f"https://www.autoscout24.com/lst/{row['make']}/{row['model']}/bt_{row['body_type']}?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&fregfrom={row['year']}&fregto={row['year']}&powertype=kw&pricefrom={price_from}&search_id=18bko0pje7h&sort=age&source=listpage_pagination&ustate=N%2CU&gear={row['gear']}"
+            print(url)
+
 
     async def run(self):
+        #await self.scrap_over_400_cars()
         helpers_functions.delete_csv_if_exists(csv_path)
         helpers_functions.delete_csv_if_exists(csv_path_models_more_400)
         helpers_functions.delete_csv_if_exists(csv_path_failed_cars)
