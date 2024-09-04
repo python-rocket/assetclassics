@@ -162,6 +162,7 @@ def upload_to_bigquery_from_csv(csv_path, bigquery_project, bigquery_dataset_id,
         logger.info("The CSV file is empty, not writing to db.")
         return
 
-    df = clean_and_prepare_df(df)
+    df_unique = df.drop_duplicates(subset='record_id')
+    df_unique = clean_and_prepare_df(df_unique)
     bigquery_table = f"{bigquery_dataset_id}.{bigquery_table_id}"
-    upload_to_bigquery(df, bigquery_project, bigquery_table)
+    upload_to_bigquery(df_unique, bigquery_project, bigquery_table)
