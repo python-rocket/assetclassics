@@ -251,7 +251,10 @@ class AutoScout():
                     models_processed += 1
 
                     make = make.replace(' ', '-')
+                    make = make.replace('/', '%2F')
+
                     model = model.replace(' ', '-')
+                    model = model.replace('/', '%2F')
 
                     url = f"https://www.autoscout24.com/lst/{make}/{model}?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&fregto={year_to}&powertype=kw&pricefrom={price_from}&search_id=18bko0pje7h&sort=age&source=listpage_pagination&ustate=N%2CU"
                     articles_num = await helpers_functions.articles_num(url, session)
