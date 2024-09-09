@@ -7,3 +7,4 @@ src/websites/results
 .DS_Store
 *.csv
 src/websites/autosout/result/*.csv
+key_file.json
