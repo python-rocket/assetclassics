@@ -344,76 +344,34 @@ class AutoScout():
 
 
 
-# # Main script
-# if __name__ == "__main__":
-#     parser = argparse.ArgumentParser(description="Description of your program")
-#     parser.add_argument("-t", "--test_mode", help="If true test mode will be on. Only sample data will be processed", type=ast.literal_eval, required=True)
-#     parser.add_argument("-p", "--csv_path", help="Path of csv to store results", type=str, required=True)
-#     parser.add_argument("-bp", "--big_query_project", help="project where to write big query table", type=str, required=True)
-#     parser.add_argument("-bt", "--big_query_table", help="big query table (dataset.table)", type=str, required=True)
-#     parser.add_argument("-400", "--csv_path_more_400_results",
-#                         help="Path of csv to store cars that have more than 400 results with all filters", type=str, required=True)
-#     parser.add_argument("-fc", "--csv_path_failed_cars",
-#                         help="Path of csv to store links failed to scrap", type=str, required=True)
-#     parser.add_argument("-l", "--logger_path", help="path of logger file", type=str, required=True)
-#
-#     args = parser.parse_args()
-#
-#
-#     autoscout = AutoScout()
-#     import time
-#     start_time = time.time()  # Start the time
-#     test_mode = args.test_mode
-#     csv_path = args.csv_path #"result/autoscout_data_7.csv"
-#     logger_path = args.logger_path
-#     bigquery_project = args.big_query_project  # "python-rocket-1"
-#     bigquery_table = args.big_query_table  # "assetclassics.autoscout_scrapper_sample_11"
-#     bigquery_dataset_id = args.big_query_table.split(".")[0]
-#     bq_table_all_years = args.big_query_table.split(".")[1]
-#     csv_path_models_more_400 = args.csv_path_more_400_results
-#     csv_path_failed_cars = args.csv_path_failed_cars
-#
-#     logger = logging.getLogger(__name__)
-#     logger.setLevel(logging.DEBUG)  # Set the log level
-#
-#     # Create a file handler and set the level and format
-#     file_handler = logging.FileHandler(logger_path)
-#     file_handler.setLevel(logging.DEBUG)
-#     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-#     file_handler.setFormatter(formatter)
-#
-#     # Add the file handler to the logger
-#     logger.addHandler(file_handler)
-#
-#     helpers_functions = HelperFunctions(logger)
-#
-#     base_url = "https://www.autoscout24.com"
-#
-#     asyncio.run(autoscout.run())
-#
-#     helpers_functions.get_execution_time(start_time)
+# Main script
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Description of your program")
+    parser.add_argument("-t", "--test_mode", help="If true test mode will be on. Only sample data will be processed", type=ast.literal_eval, required=True)
+    parser.add_argument("-p", "--csv_path", help="Path of csv to store results", type=str, required=True)
+    parser.add_argument("-bp", "--big_query_project", help="project where to write big query table", type=str, required=True)
+    parser.add_argument("-bt", "--big_query_table", help="big query table (dataset.table)", type=str, required=True)
+    parser.add_argument("-400", "--csv_path_more_400_results",
+                        help="Path of csv to store cars that have more than 400 results with all filters", type=str, required=True)
+    parser.add_argument("-fc", "--csv_path_failed_cars",
+                        help="Path of csv to store links failed to scrap", type=str, required=True)
+    parser.add_argument("-l", "--logger_path", help="path of logger file", type=str, required=True)
+
+    args = parser.parse_args()
 
 
-async def run_script():
-
-    import  time
     autoscout = AutoScout()
+    import time
     start_time = time.time()  # Start the time
-
-    global bigquery_dataset_id, bq_table_all_years, test_mode, csv_path, bigquery_project, bigquery_table, bigquery_dataset_id, bq_table_all_years, csv_path_models_more_400, csv_path_failed_cars, logger, helpers_functions, base_url
-
-    bigquery_dataset_id = "autoscout24"
-    bq_table_all_years = "distinct_autoscout_records"
-
-    test_mode = False
-    csv_path = "result/autoscout_data_7.csv_1"
-    logger_path = "test.log"
-    bigquery_project = "ac-vehicle-data" # "python-rocket-1"
-    bigquery_table = "autoscout24.distinct_autoscout_records" # "assetclassics.autoscout_scrapper_sample_11"
-    bigquery_dataset_id = "autoscout24"
-    bq_table_all_years = "distinct_autoscout_records"
-    csv_path_models_more_400 = "result/models_more_400.csv"
-    csv_path_failed_cars = "result/failed_cars.csv"
+    test_mode = args.test_mode
+    csv_path = args.csv_path #"result/autoscout_data_7.csv"
+    logger_path = args.logger_path
+    bigquery_project = args.big_query_project  # "python-rocket-1"
+    bigquery_table = args.big_query_table  # "assetclassics.autoscout_scrapper_sample_11"
+    bigquery_dataset_id = args.big_query_table.split(".")[0]
+    bq_table_all_years = args.big_query_table.split(".")[1]
+    csv_path_models_more_400 = args.csv_path_more_400_results
+    csv_path_failed_cars = args.csv_path_failed_cars
 
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.DEBUG)  # Set the log level
@@ -431,9 +389,51 @@ async def run_script():
 
     base_url = "https://www.autoscout24.com"
 
-    await autoscout.run()
+    asyncio.run(autoscout.run())
 
     helpers_functions.get_execution_time(start_time)
+
+
+# async def run_script():
+#
+#     import  time
+#     autoscout = AutoScout()
+#     start_time = time.time()  # Start the time
+#
+#     global bigquery_dataset_id, bq_table_all_years, test_mode, csv_path, bigquery_project, bigquery_table, bigquery_dataset_id, bq_table_all_years, csv_path_models_more_400, csv_path_failed_cars, logger, helpers_functions, base_url
+#
+#     bigquery_dataset_id = "autoscout24"
+#     bq_table_all_years = "distinct_autoscout_records"
+#
+#     test_mode = False
+#     csv_path = "result/autoscout_data_7.csv_1"
+#     logger_path = "test.log"
+#     bigquery_project = "ac-vehicle-data" # "python-rocket-1"
+#     bigquery_table = "autoscout24.distinct_autoscout_records" # "assetclassics.autoscout_scrapper_sample_11"
+#     bigquery_dataset_id = "autoscout24"
+#     bq_table_all_years = "distinct_autoscout_records"
+#     csv_path_models_more_400 = "result/models_more_400.csv"
+#     csv_path_failed_cars = "result/failed_cars.csv"
+#
+#     logger = logging.getLogger(__name__)
+#     logger.setLevel(logging.DEBUG)  # Set the log level
+#
+#     # Create a file handler and set the level and format
+#     file_handler = logging.FileHandler(logger_path)
+#     file_handler.setLevel(logging.DEBUG)
+#     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+#     file_handler.setFormatter(formatter)
+#
+#     # Add the file handler to the logger
+#     logger.addHandler(file_handler)
+#
+#     helpers_functions = HelperFunctions(logger)
+#
+#     base_url = "https://www.autoscout24.com"
+#
+#     await autoscout.run()
+#
+#     helpers_functions.get_execution_time(start_time)
 
 
 

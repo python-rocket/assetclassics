@@ -32,7 +32,7 @@ docker tag autoscout europe-west1-docker.pkg.dev/python-rocket-1/autoscout-scrap
 
 docker push europe-west1-docker.pkg.dev/python-rocket-1/autoscout-scrapper/autoscout:latest
 
-gcloud run deploy autoscout --image europe-west1-docker.pkg.dev/python-rocket-1/autoscout-scrapper/autoscout:latest --platform managed --region europe-west1 --allow-unauthenticated
+gcloud run jobs create autoscout --image europe-west1-docker.pkg.dev/python-rocket-1/autoscout-scrapper/autoscout:latest --region europe-west1 --max-retries 1 --task-timeout=86400
 
-gcloud scheduler jobs create http autoscout-job --schedule="00 00 * * *" --time-zone="Europe/Warsaw" --http-method=GET --uri="https://autoscout-340162917499.europe-west1.run.app/start" --location="europe-west1"
+gcloud scheduler jobs create http autoscout-job --schedule "00 00 * * *" --http-method POST --uri https://europe-west1-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/python-rocket-1/jobs/autoscout:run --location="europe-west1" --time-zone "Europe/Warsaw" --oauth-service-account-email "340162917499-compute@developer.gserviceaccount.com" --oauth-token-scope "https://www.googleapis.com/auth/cloud-platform"
 ```
