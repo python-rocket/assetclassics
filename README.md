@@ -18,21 +18,31 @@ python3 main.py -t False -p result/autoscout_data_1.csv -bp ac-vehicle-data -bt 
 
 ## Create artifact registry, deploy cloud run and set up scheduler
 ```bash
-gcloud artifacts repositories create autoscout-scrapper \
-  --repository-format=docker \
-  --location=europe-west1
+# Auth in with gcloud
+gcloud auth login
+gcloud config set project [PROJECT_ID]
+gcloud auth list
+
+# Set variables
+project_id=python-rocket-1
+# Service id number
+gcloud projects describe $project_id --format="value(projectNumber)" 
+service_id=340162917499
+
+gcloud artifacts repositories create autoscout-scrapper --repository-format=docker --location=europe-west1
 
 gcloud auth configure-docker europe-west1-docker.pkg.dev
 
 docker build -t autoscout --platform .
 
-docker build -t autoscout --platform linux/amd64 . (mac m processor users)
+docker build -t autoscout --platform linux/amd64 . #(mac m processor users)
 
-docker tag autoscout europe-west1-docker.pkg.dev/python-rocket-1/autoscout-scrapper/autoscout:latest
+docker tag autoscout europe-west1-docker.pkg.dev/$project_id/autoscout-scrapper/autoscout:latest
 
-docker push europe-west1-docker.pkg.dev/python-rocket-1/autoscout-scrapper/autoscout:latest
+docker push europe-west1-docker.pkg.dev/$project_id/autoscout-scrapper/autoscout:latest
 
-gcloud run jobs create autoscout --image europe-west1-docker.pkg.dev/python-rocket-1/autoscout-scrapper/autoscout:latest --region europe-west1 --max-retries 1 --task-timeout=86400
+gcloud run jobs create autoscout --image europe-west1-docker.pkg.dev/$project_id/autoscout-scrapper/autoscout:latest --region europe-west1 --max-retries 1 --task-timeout=86400
 
-gcloud scheduler jobs create http autoscout-job --schedule "00 00 * * *" --http-method POST --uri https://europe-west1-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/python-rocket-1/jobs/autoscout:run --location="europe-west1" --time-zone "Europe/Warsaw" --oauth-service-account-email "340162917499-compute@developer.gserviceaccount.com" --oauth-token-scope "https://www.googleapis.com/auth/cloud-platform"
+gcloud scheduler jobs create http autoscout-job_test --schedule "00 00 * * *" --http-method POST --uri https://europe-west1-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/$project_id/jobs/autoscout:run --location="europe-west1" --time-zone "Europe/Warsaw" --oauth-service-account-email "${service_id}-compute@developer.gserviceaccount.com" --oauth-token-scope "https://www.googleapis.com/auth/cloud-platform"
+
 ```
