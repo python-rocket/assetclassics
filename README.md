@@ -27,7 +27,7 @@ gcloud auth list
 project_id=python-rocket-1
 # Service id number
 gcloud projects describe $project_id --format="value(projectNumber)" 
-service_id=340162917499
+service_id=340162917499 
 
 gcloud artifacts repositories create autoscout-scrapper --repository-format=docker --location=europe-west1
 
