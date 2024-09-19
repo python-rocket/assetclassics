@@ -1,25 +1,21 @@
 import asyncio
+import sys
+
 import aiohttp
 import pandas as pd
 import json
 import argparse
+from datetime import datetime
 
 from src.helpers import HelperFunctions
-
-from src.extract_html import get_car_summary
-from src.extract_html import get_section_data
+from src.extract_html import get_car_summary, get_section_data
 from src.extract_json import get_additional_json_data
-
-from src.bigquery import clean_and_prepare_df
-from src.bigquery import upload_to_bigquery
-from src.bigquery import get_existing_record_ids
+from src.bigquery import clean_and_prepare_df, upload_to_bigquery, get_existing_record_ids, read_from_bigquery, upload_unique_to_bigquery, upload_to_bigquery_from_csv
 
 import traceback
 
 import logging
 import ast
-
-
 
 
 """
@@ -37,11 +33,56 @@ class AutoScout():
         self.article_counter = 0
         self.failed_article_counter = 0
         self.page_counter = 0
+        self.failed_cars = []
+
+    def get_scrapped_cars(self):
+        try:
+            columns = ['record_id']
+            df = read_from_bigquery(bigquery_project, bigquery_dataset_id, bq_table_all_years, columns=columns)
+            self.record_ids = set(df['record_id'])
+        except Exception as e:
+            logger.info(e)
+            self.record_ids = set()
+
+    def get_special_cars(self):
+        columns = ['_row', 'autoscout_24_make_name', 'autoscout_24_model_name', 'scrape_setting']
+        table_id = 'taxonomy_and_scraping_setting'
+
+        df = read_from_bigquery(bigquery_project, bigquery_dataset_id, table_id, columns=columns)
+
+        no_need_cars = df[df['scrape_setting'] == 'No']
+
+        all_years_cars = df[df['scrape_setting'] == 'All']
+        current_year = datetime.now().year
+        all_years_cars['scrape_setting'] = current_year
+
+        until_year_cars = df[(df['scrape_setting'] != 'All') & (df['scrape_setting'] != 'No')]
+        until_year_cars['scrape_setting'] = until_year_cars['scrape_setting'].astype(int)
+
+        all_cars = pd.concat([all_years_cars, until_year_cars])
+        all_cars['_row'] = all_cars['_row'].astype(int)
+        all_cars = all_cars.sort_values(by='_row')
+
+        min_value = 1
+        max_value = 12666
+        all_cars = all_cars[(all_cars['_row'] >= min_value) & (all_cars['_row'] <= max_value)]
+
+        # self.no_need_cars = no_need_cars.groupby(no_need_cars['autoscout_24_make_name'].str.lower())['autoscout_24_model_name'].apply(lambda x: set(x.str.lower())).to_dict()
+        #
+        # self.all_years_cars = all_years_cars.groupby(all_years_cars['autoscout_24_make_name'].str.lower()).apply(
+        #                         lambda x: {model.lower(): setting for model, setting in zip(x['autoscout_24_model_name'], x['scrape_setting'])}).to_dict()
+        # self.until_year_cars = until_year_cars.groupby(until_year_cars['autoscout_24_make_name'].str.lower()).apply(
+        #                         lambda x: {model.lower(): setting for model, setting in zip(x['autoscout_24_model_name'], x['scrape_setting'])}).to_dict()
+
+        self.all_cars = all_cars.groupby(all_cars['autoscout_24_make_name'].str.lower()).apply(
+                                lambda x: {model.lower(): setting for model, setting in zip(x['autoscout_24_model_name'], x['scrape_setting'])}).to_dict()
+
 
     async def get_car_details(self, subpage_link, session, article):
         soup, num_failed_articles = await helpers_functions.get_soup_from_page(subpage_link, session)
         self.failed_article_counter += num_failed_articles
         if soup is None:
+            self.failed_cars.append({"link": subpage_link})
             return None
 
         car_summary = get_car_summary(article, base_url)
@@ -55,9 +96,7 @@ class AutoScout():
             "additional_data": additional_data
         }
         )
-
         return car_details
-
 
     async def combine_data(self, additional_json_data, section_data_combined, data_car_summary, additional_data):
         with open("src/result_columns.json", "r") as f:
@@ -66,7 +105,6 @@ class AutoScout():
         car_details = result_schema
 
         #print("CAR SUMMARY COMBINED", data_car_summary)
-
         # Hierarchy of data sources
         for key, item in result_schema.items():
             additional_json_value = additional_json_data.get(key, None)
@@ -86,17 +124,11 @@ class AutoScout():
                 if key == "ad_url":
                     logger.warning(f"Could not find a value for this key {key}")
             """
-
-
         #print("CAR SUMMARY AFTER COMBINED", car_details)
-
-
         # Add additional data
         car_details.update(additional_data)
 
         return car_details
-
-
 
     async def loop_through_all_pages(self, url_filter, session, base_url):
         articles_parsed = []
@@ -151,6 +183,10 @@ class AutoScout():
             if articles:
                 for article in articles:
                     self.article_counter += 1
+
+                    record_id = article.get('data-guid')  # if article in bq table already, do not process it
+                    if record_id in self.record_ids:
+                        continue
                     subpage_link = helpers_functions.get_subpage_link(article, base_url)
                     task = asyncio.create_task(self.get_car_details(subpage_link, session, article))
                     tasks.append(task)
@@ -161,9 +197,9 @@ class AutoScout():
                 logger.error("NO ARTICLES FOUND")
 
 
-            if test_mode:
-                #print("Test mode. only using first page")
-                break
+            # if test_mode:
+            #     #print("Test mode. only using first page")
+            #     break
 
         # Executing asnyc task to get all car details
         #logger.info(f"Total running tasks BEFORE: {len(asyncio.all_tasks())}")
@@ -172,8 +208,20 @@ class AutoScout():
 
         for car in car_details:
             try:
-                data_combined = await self.combine_data(car["additional_json_data"], car["section_data_combined"], car["car_summary"], car["additional_data"])
+                # Avoid no needed cars
+                # make = car.get('car_summary').get('make_orig').lower()
+                # model = car.get('car_summary').get('model_orig').lower()
+                # year = car.get('additional_json_data').get('production_year')
+
+                # if make in self.all_cars and model in self.all_cars[make] and year:
+                #     if int(year[:4]) <= int(self.all_cars[make][model]):
+                data_combined = await self.combine_data(car["additional_json_data"],
+                                                        car["section_data_combined"], car["car_summary"],
+                                                        car["additional_data"])
                 articles_parsed.append(data_combined)
+
+                # else:
+                #     continue
 
             except Exception as e:
                 logger.error("failed processing this article: Going to next article")
@@ -181,175 +229,242 @@ class AutoScout():
                 logger.error(traceback.print_exc())
                 continue
 
-
         return articles_parsed
 
-
-    async def dynamic_steps_logic(self):
-
-
-        # After price limit last: Get all remaining data
-        if self.from_price >= self.price_limit_last:
-            self.step = 100000000
-            next_is_last_round = True
-            self.from_price = self.to_price + 1
-
-        #  After price limit 1: Change Step size
-        elif self.to_price == self.price_limit_1 - 1:
-            self.step = 1000
-            #print(f"Increasing Steps to: {step}")
-            self.from_price = self.price_limit_1
-
-        else:
-            self.rom_price = self.from_price + self.step
-
-        # Get all which have higher price
-
-
-        self.to_price = self.from_price + self.step - 1
-
-
-
-    async def reaggregate_all_data(self):
-        logger.info("Start: Reaggregating all datae")
-
-
-        ## Loop through all body types
-        body_types = [1, 2, 3, 4, 5, 6, 7]
+    async def scrap_special_cars(self):
+        price_from = 20000
+        first_reg_from = 1940
+        len_makes = len(self.all_cars.items())
+        len_all_cars = sum([len(val) for key, val in self.all_cars.items()])
+        models_processed = 0
+        cars_processed = 0
         async with aiohttp.ClientSession() as session:
-            for body_type in body_types:
-                logger.info("")
-                logger.info("********** Loop for body_type: {}".format(body_type))
-
-
-                self.from_price = 20000
-                self.to_price = 20049
-                self.step = 50
+            for i, (make, models) in enumerate(self.all_cars.items()):
+                logger.info(f"*** Processed total cars: {cars_processed}")
+                logger.info(f"*** Make {i + 1} / {len_makes}")
                 self.data = []
-                self.price_limit_1 = 100000
-                self.price_limit_last = 400000
-                self.next_is_last_round = False
-                ## Loop through all price ranges
-                #for price in range(from_price, to_price, step):
-                while True:
+                len_models = len(models.items())
+                for i, (model, year_to) in enumerate(models.items()):
+                    logger.info(f"\n\n*** Scrapping model number: {i + 1} / {len_models}")
+                    logger.info(f"*** Processed models: {models_processed}/{len_all_cars}")
 
-                    #print("")
-                    if self.from_price % 10000 == 0: # or round_down_to_nearest_hundred_thousand(from_price) % 100000 == 0
-                        logger.info("-------------------------")
-                        logger.info("Status update")
-                        helpers_functions.get_execution_time(start_time)
-                        logger.info("Number of processed articles {}".format(self.article_counter))
-                        logger.info("Number of failed articles {}".format(self.failed_article_counter))
-                        logger.info("-------------------------")
-                        logger.info("")
-                        logger.info("****** price range: {} - {}".format(self.from_price,self.to_price ))
+                    models_processed += 1
 
+                    make = make.replace(' ', '-')
+                    make = make.replace('/', '%2F')
 
-                    url = f"https://www.autoscout24.com/lst?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&fregto=2005&powertype=kw&search_id=gd6zvktyks&sort=age&source=listpage_pagination&ustate=N%2CU&pricefrom={self.from_price}&priceto={self.to_price}&body={body_type}"
+                    model = model.replace(' ', '-')
+                    model = model.replace('/', '%2F')
 
-                    # Get all cars ant their data
-                    self.data += await self.loop_through_all_pages(url, session, base_url)
-
-                    # Dynamic Steps
-                    await self.dynamic_steps_logic()
-                    if self.next_is_last_round:
+                    url = f"https://www.autoscout24.com/lst/{make}/{model}?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&fregto={year_to}&powertype=kw&pricefrom={price_from}&search_id=18bko0pje7h&sort=age&source=listpage_pagination&ustate=N%2CU"
+                    articles_num = await helpers_functions.articles_num(url, session)
+                    logger.info(f"Parsing make {make}, model {model} until year {year_to}\narticles number: {articles_num}")
+                    if articles_num == 0:
+                        continue
+                    if articles_num > 100000: # if model does not present, all vehicles appers in the search, skip this case
+                        continue
+                    if articles_num <= 400:
+                        # Get all cars and their data
+                        self.data += await self.loop_through_all_pages(url, session, base_url)
+                    else:
+                        #logger.info(f"More then 400 articles. Looping through years. Article number: {articles_num}")
+                        step_year = 1
+                        for year in range(first_reg_from, year_to+1, step_year):
+                            url = f"https://www.autoscout24.com/lst/{make}/{model}?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&fregfrom={year}&fregto={year}&powertype=kw&pricefrom={price_from}&search_id=18bko0pje7h&sort=age&source=listpage_pagination&ustate=N%2CU"
+                            articles_num = await helpers_functions.articles_num(url, session)
+                            logger.info(f"Applied years filter, Scrapping cars: {make, model} in years range {year} - {year}\narticles number: {articles_num}")
+                            if articles_num == 0:
+                                continue
+                            if articles_num <= 400:
+                                # Get all cars and their data
+                                self.data += await self.loop_through_all_pages(url, session, base_url)
+                            else:
+                                #logger.info(f"More then 400 articles. Looping through bodys. Article number: {articles_num}")
+                                body_types = ['compact', 'convertible', 'coupe', 'suv%2Foff-road%2Fpick-up', 'station-wagon', 'sedans', 'van', 'transporter', 'other']
+                                for body_type in body_types:
+                                    url = f"https://www.autoscout24.com/lst/{make}/{model}/bt_{body_type}?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&fregfrom={year}&fregto={year}&powertype=kw&pricefrom={price_from}&search_id=18bko0pje7h&sort=age&source=listpage_pagination&ustate=N%2CU"
+                                    articles_num = await helpers_functions.articles_num(url, session)
+                                    logger.info(
+                                        f"Applied bodies filter, Scrapping cars: {make, model} in years range {year} - {year} body type: {body_type}\narticles number: {articles_num}")
+                                    if articles_num == 0:
+                                        continue
+                                    if articles_num <= 400:
+                                        # Get all cars and their data
+                                        self.data += await self.loop_through_all_pages(url, session, base_url)
+                                    else:
+                                        #logger.info(f"More then 400 articles. Looping through gears. Article number: {articles_num}")
+                                        gear_types = ['A', 'M', 'S'] # automatic, manual, semi
+                                        for gear in gear_types:
+                                            url = f"https://www.autoscout24.com/lst/{make}/{model}/bt_{body_type}?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&fregfrom={year}&fregto={year}&powertype=kw&pricefrom={price_from}&search_id=18bko0pje7h&sort=age&source=listpage_pagination&ustate=N%2CU&gear={gear}"
+                                            articles_num = await helpers_functions.articles_num(url, session)
+                                            logger.info(
+                                                f"Applied gear filter, Scrapping cars: {make, model} in years range {year} - {year}, body type: {body_type}, gear: {gear}\narticles number: {articles_num}")
+                                            if articles_num > 400:
+                                                models_more_400 = [{'make': make, 'model': model, 'year': year, 'body_type': body_type, 'gear': gear}]
+                                                helpers_functions.write_data_to_csv(models_more_400, csv_path_models_more_400)
+                                            if articles_num == 0:
+                                                continue
+                                            self.data += await self.loop_through_all_pages(url, session, base_url)
+                    if test_mode:
                         break
+                if self.data:
+                    helpers_functions.write_data_to_csv(self.data, csv_path)
+                    upload_to_bigquery_from_csv(csv_path, bigquery_project, bigquery_dataset_id, bq_table_all_years)
 
+                helpers_functions.delete_csv_if_exists(csv_path)
 
-                # Write data to csv
-                helpers_functions.write_data_to_csv(self.data, csv_path)
+                cars_processed += len(self.data)
+                # update failed cars file
+                if self.failed_cars:
+                    helpers_functions.write_data_to_csv(self.failed_cars, csv_path_failed_cars)
+                self.failed_cars = []
                 if test_mode:
-                    logger.info("test mode: stopping after one body type")
                     break
 
-
-            # Final run after loop ended
-            """
-            final_from_price = 400000
-            url = f"https://www.autoscout24.com/lst?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&fregto=2005&powertype=kw&search_id=gd6zvktyks&sort=age&source=listpage_pagination&ustate=N%2CU&pricefrom={final_from_price}"
-            await self.loop_through_all_pages(url, session, base_url)
-            """
-
-            # Read CSV and save result in Big Query
-            df = pd.read_csv(csv_path)
-            df = clean_and_prepare_df(df)
-            upload_to_bigquery(df, bigquery_project, bigquery_table)
-
-
-    async def get_newest_data(self):
-        logger.info("Start: Getting newest data")
-        from_price = 20000
-        url = f"https://www.autoscout24.com/lst?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&fregto=2005&powertype=kw&pricefrom={from_price}&search_id=gd6zvktyks&sort=age&source=listpage_pagination&ustate=N%2CU"
-
-        # Get all cars ant their data
-        async with aiohttp.ClientSession() as session:
-            data = await self.loop_through_all_pages(url, session, base_url)
-
-        helpers_functions.write_data_to_csv(data, csv_path)
-
-        existing_record_ids = get_existing_record_ids(bigquery_project, bigquery_dataset_id, bigquery_table_id)
-        df = pd.read_csv(csv_path)
-        num_rows_before = df.shape[0]
-        df = df[~df['record_id'].isin(existing_record_ids)]
-        num_rows_after = df.shape[0]
-        logger.info(f"Removed this number of duplicate record ids: {num_rows_after - num_rows_before}")
-        df = clean_and_prepare_df(df)
-        upload_to_bigquery(df, bigquery_project, bigquery_table)
+    async def scrap_over_400_cars(self):
+        df = pd.read_csv(csv_path_models_more_400)
+        price_from = 20000
+        for i, row in df.iterrows():
+            url = f"https://www.autoscout24.com/lst/{row['make']}/{row['model']}/bt_{row['body_type']}?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&fregfrom={row['year']}&fregto={row['year']}&powertype=kw&pricefrom={price_from}&search_id=18bko0pje7h&sort=age&source=listpage_pagination&ustate=N%2CU&gear={row['gear']}"
+            print(url)
 
 
     async def run(self):
+        #await self.scrap_over_400_cars()
         helpers_functions.delete_csv_if_exists(csv_path)
-        if is_aggregation:
-            await self.reaggregate_all_data()
-            logger.info("FINAL: Number of processed articles {}".format(self.article_counter))
-        else:
-            await self.get_newest_data()
+        helpers_functions.delete_csv_if_exists(csv_path_models_more_400)
+        helpers_functions.delete_csv_if_exists(csv_path_failed_cars)
+        # Read cars record_ids that already in bq
+        self.get_scrapped_cars()
+        # Read special cars parameters from bq
+        self.get_special_cars()
+
+        await self.scrap_special_cars()
+        logger.info("FINAL: Number of processed articles {}".format(self.article_counter))
 
 
 
 # Main script
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Description of your program")
-    parser.add_argument("-a", "--is_aggregation", help="If true will reaggregate all data. Otherwise only newest 20 pages.", type=ast.literal_eval, required=True)
     parser.add_argument("-t", "--test_mode", help="If true test mode will be on. Only sample data will be processed", type=ast.literal_eval, required=True)
     parser.add_argument("-p", "--csv_path", help="Path of csv to store results", type=str, required=True)
     parser.add_argument("-bp", "--big_query_project", help="project where to write big query table", type=str, required=True)
     parser.add_argument("-bt", "--big_query_table", help="big query table (dataset.table)", type=str, required=True)
+    parser.add_argument("-400", "--csv_path_more_400_results",
+                        help="Path of csv to store cars that have more than 400 results with all filters", type=str, required=True)
+    parser.add_argument("-fc", "--csv_path_failed_cars",
+                        help="Path of csv to store links failed to scrap", type=str, required=True)
     parser.add_argument("-l", "--logger_path", help="path of logger file", type=str, required=True)
 
     args = parser.parse_args()
 
 
-
-
     autoscout = AutoScout()
     import time
     start_time = time.time()  # Start the time
-    is_aggregation = args.is_aggregation
     test_mode = args.test_mode
-    csv_path =args.csv_path #"result/autoscout_data_7.csv"
+    csv_path = args.csv_path #"result/autoscout_data_7.csv"
     logger_path = args.logger_path
-    bigquery_project = args.big_query_project # "python-rocket-1"
-    bigquery_table = args.big_query_table # "assetclassics.autoscout_scrapper_sample_11"
+    bigquery_project = args.big_query_project  # "python-rocket-1"
+    bigquery_table = args.big_query_table  # "assetclassics.autoscout_scrapper_sample_11"
     bigquery_dataset_id = args.big_query_table.split(".")[0]
-    bigquery_table_id = args.big_query_table.split(".")[1]
+    bq_table_all_years = args.big_query_table.split(".")[1]
+    csv_path_models_more_400 = args.csv_path_more_400_results
+    csv_path_failed_cars = args.csv_path_failed_cars
 
-    logging.basicConfig(
-        level=logging.DEBUG,  # Set the log level
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',  # Set the log format
-        handlers=[
-            logging.FileHandler(logger_path),  # Log to a file
-            logging.StreamHandler()  # Also log to the console
-        ]
-    )
     logger = logging.getLogger(__name__)
+    logger.setLevel(logging.DEBUG)  # Set the log level
+
+    # Create a file handler and set the level and format
+    file_handler = logging.FileHandler(logger_path)
+    file_handler.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    file_handler.setFormatter(formatter)
+
+    # Add the file handler to the logger
+    logger.addHandler(file_handler)
+
     helpers_functions = HelperFunctions(logger)
 
-    #bigquery_project = "ac-vehicle-data"
-    #bigquery_table = "autoscout24.autoscout_scrapper_sample_v1"
-
     base_url = "https://www.autoscout24.com"
+
     asyncio.run(autoscout.run())
 
     helpers_functions.get_execution_time(start_time)
 
+
+# async def run_script():
+#
+#     import  time
+#     autoscout = AutoScout()
+#     start_time = time.time()  # Start the time
+#
+#     global bigquery_dataset_id, bq_table_all_years, test_mode, csv_path, bigquery_project, bigquery_table, bigquery_dataset_id, bq_table_all_years, csv_path_models_more_400, csv_path_failed_cars, logger, helpers_functions, base_url
+#
+#     bigquery_dataset_id = "autoscout24"
+#     bq_table_all_years = "distinct_autoscout_records"
+#
+#     test_mode = False
+#     csv_path = "result/autoscout_data_7.csv_1"
+#     logger_path = "test.log"
+#     bigquery_project = "ac-vehicle-data" # "python-rocket-1"
+#     bigquery_table = "autoscout24.distinct_autoscout_records" # "assetclassics.autoscout_scrapper_sample_11"
+#     bigquery_dataset_id = "autoscout24"
+#     bq_table_all_years = "distinct_autoscout_records"
+#     csv_path_models_more_400 = "result/models_more_400.csv"
+#     csv_path_failed_cars = "result/failed_cars.csv"
+#
+#     logger = logging.getLogger(__name__)
+#     logger.setLevel(logging.DEBUG)  # Set the log level
+#
+#     # Create a file handler and set the level and format
+#     file_handler = logging.FileHandler(logger_path)
+#     file_handler.setLevel(logging.DEBUG)
+#     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+#     file_handler.setFormatter(formatter)
+#
+#     # Add the file handler to the logger
+#     logger.addHandler(file_handler)
+#
+#     helpers_functions = HelperFunctions(logger)
+#
+#     base_url = "https://www.autoscout24.com"
+#
+#     await autoscout.run()
+#
+#     helpers_functions.get_execution_time(start_time)
+
+
+
+
+########  FUNCTIONS THAT CURRENTLY NOT IN USE
+
+
+
+# async def dynamic_steps_logic(self):
+#     # After price limit last: Get all remaining data
+#     if self.from_price >= self.price_limit_last:
+#         self.step = 100000000
+#         next_is_last_round = True
+#         self.from_price = self.to_price + 1
+#     #  After price limit 1: Change Step size
+#     elif self.to_price == self.price_limit_1 - 1:
+#         self.step = 1000
+#         #print(f"Increasing Steps to: {step}")
+#         self.from_price = self.price_limit_1
+#     else:
+#         self.from_price = self.from_price + self.step
+#     # Get all which have higher price
+#     self.to_price = self.from_price + self.step - 1
+#
+# async def get_newest_data(self):
+#     logger.info("Start: Getting newest data")
+#     url = f"https://www.autoscout24.com/lst?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=1&powertype=kw&search_id=gd6zvktyks&sort=age&source=listpage_pagination&ustate=N%2CU"
+#
+#     # Get all cars ant their data
+#     async with aiohttp.ClientSession() as session:
+#         data = await self.loop_through_all_pages(url, session, base_url)
+#
+#     helpers_functions.write_data_to_csv(data, csv_path)
+#     upload_unique_to_bigquery(csv_path, bigquery_project, bigquery_dataset_id, bigquery_table_id)

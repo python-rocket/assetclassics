@@ -39,8 +39,15 @@ class HelperFunctions:
         articles = soup.find_all('article')
         return articles
     
-    
-    
+    async def articles_num(self, url, session):
+        try:
+            soup, _ = await self.get_soup_from_page(url, session)
+            articles_num = int(
+                soup.find('h1', {'data-testid': 'list-header-title'}).get_text().split(' ')[0].replace(',', ''))
+            return articles_num
+        except Exception as e:
+            return -1
+
     async def get_soup_from_page(self, url, session, retries=3, timeout=10):
         failed_articles = []
         headers = {
@@ -110,6 +117,7 @@ class HelperFunctions:
         else:
             df.to_csv(file_path, mode='w', header=True, index=False)
 
+
     def delete_csv_if_exists(self, file_path):
         if os.path.isfile(file_path):
             self.logger.info(f"File {file_path} already exists. Deleting it.")
@@ -128,7 +136,6 @@ class HelperFunctions:
         #print(f"Execution time: {execution_time:.2f} seconds")
         self.logger.info(f"Execution time: {execution_time_minutes:.2f} minutes")
         #print(f"Execution time: {execution_time_hours:.2f} hours")
-
 
 
 
