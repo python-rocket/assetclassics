@@ -30,14 +30,19 @@ def clean_and_prepare_df(df):
     df = df.replace(np.nan, None)
     df = df.replace("None", None)
     df = df.replace("nan", None)
+
     return df.where(pd.notnull(df), None)
 
 
 def upload_to_bigquery(df, project, table_id):
+    # Convert all columns in the DataFrame to strings
     logger.info("RESULT DF")
     logger.info(df)
     client = bigquery.Client(project=project)
-    job = client.load_table_from_dataframe(df, table_id)
+    # set all columns to string
+    schema = [bigquery.SchemaField(column, 'STRING') for column in df.columns]
+    job_config = bigquery.LoadJobConfig(schema=schema)
+    job = client.load_table_from_dataframe(df, table_id, job_config=job_config)
     job.result()
 
     response = {
@@ -47,6 +52,7 @@ def upload_to_bigquery(df, project, table_id):
         "output_rows": job.output_rows
     }
     logger.info(response)
+
 
 def get_existing_record_ids(project, dataset_id, table_id):
     column = "record_id"
@@ -124,3 +130,39 @@ def get_empty_columns_from_bigquery(project_id, dataset_id, table_id):
             print(col)
     else:
         print("No columns with all empty values were found.")
+
+
+def read_from_bigquery(project_id, dataset_id, table_id, columns=['*'], where_condition=''):
+    client = bigquery.Client(project=project_id)
+    full_table_id = f"{project_id}.{dataset_id}.{table_id}"
+
+    # Read the table into a DataFrame
+    columns_str = ",".join(columns)
+    query = f"SELECT {columns_str} FROM `{full_table_id}`{where_condition}"
+    df = client.query(query).to_dataframe()
+    return df
+
+
+def upload_unique_to_bigquery(csv_path, bigquery_project, bigquery_dataset_id, bigquery_table_id):
+    existing_record_ids = get_existing_record_ids(bigquery_project, bigquery_dataset_id, bigquery_table_id)
+    df = pd.read_csv(csv_path)
+    num_rows_before = df.shape[0]
+    df = df[~df['record_id'].isin(existing_record_ids)]
+    num_rows_after = df.shape[0]
+    logger.info(f"Removed this number of duplicate record ids: {num_rows_after - num_rows_before}")
+    df = clean_and_prepare_df(df)
+    bigquery_table = f"{bigquery_dataset_id}.{bigquery_table_id}"
+    upload_to_bigquery(df, bigquery_project, bigquery_table)
+
+
+def upload_to_bigquery_from_csv(csv_path, bigquery_project, bigquery_dataset_id, bigquery_table_id):
+    try:
+        df = pd.read_csv(csv_path)
+    except pd.errors.EmptyDataError:
+        logger.info("The CSV file is empty, not writing to db.")
+        return
+
+    df_unique = df.drop_duplicates(subset='record_id')
+    df_unique = clean_and_prepare_df(df_unique)
+    bigquery_table = f"{bigquery_dataset_id}.{bigquery_table_id}"
+    upload_to_bigquery(df_unique, bigquery_project, bigquery_table)

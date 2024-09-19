@@ -6,3 +6,5 @@ numpy
 pyarrow
 aiohttp
 db-dtypes
+fastapi
+uvicorn[standard]

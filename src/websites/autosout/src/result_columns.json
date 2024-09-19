@@ -56,5 +56,7 @@
   "vehicle_originalMarket": null,
   "vehicle_hadAccident": null,
   "vehicle_hasFullServiceHistory": null,
-  "vehicle_noOfPreviousOwners": null
+  "vehicle_noOfPreviousOwners": null,
+  "seller_type": null,
+  "seller_companyName": null
 }
